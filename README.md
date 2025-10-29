@@ -103,6 +103,7 @@ Install the below tools
   - Run ```azd env new <YOUR_ENVIRONMENT_NAME>```
   - Run ```azd env set AZURE_PRINCIPAL_ID $(az ad signed-in-user show --query id -o tsv)```
   - Change "indexer-image-verbal" to "self-multimodal-embedding" to use Cohere model for embedding
+  - Run azd up. This command will
     - Provision the azure resources
     - Package the application
     - Injest data into azure search index
