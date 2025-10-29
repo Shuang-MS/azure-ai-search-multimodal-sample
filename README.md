@@ -101,8 +101,8 @@ Install the below tools
   - Run ```az login --use-device-code```
   - Run ```azd auth login```
   - Run ```azd env new <YOUR_ENVIRONMENT_NAME>```
-  - Run ```azd env set AZURE_PRINCIPAL_ID  <USER_OBJECT_ID>``` (This needs to user's object ID from Azure Entra ID. Alternate you can use command from your local development box ```az ad signed-in-user show --query id -o tsv``` )
-  - Run ```azd up```. This command will
+  - Run ```azd env set AZURE_PRINCIPAL_ID $(az ad signed-in-user show --query id -o tsv)```
+  - Change "indexer-image-verbal" to "self-multimodal-embedding" to use Cohere model for embedding
     - Provision the azure resources
     - Package the application
     - Injest data into azure search index

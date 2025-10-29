@@ -80,7 +80,7 @@ class MultimodalRag(RagBase):
                 ProcessingStep(
                     title="Grounding results received",
                     type="code",
-                    description=f"Retrieved {len(grounding_results["references"])} results.",
+                    description=f'Retrieved {len(grounding_results["references"])} results.',
                     content=grounding_results,
                 ),
             )
@@ -133,7 +133,7 @@ class MultimodalRag(RagBase):
                     collected_documents.append(
                         {
                             "type": "text",
-                            "text": f"The image below has the ID: [{doc["ref_id"]}]",
+                            "text": f'The image below has the ID: [{doc["ref_id"]}]',
                         }
                     )
                     # blob path differs if index was created through self script in repo or from the portal mulitmodal RAG wizard

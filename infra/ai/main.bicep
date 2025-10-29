@@ -7,6 +7,7 @@ param oaiDeploymentName string
 param oaimodelName string
 param oaiEmbeddingModelName string
 param cohereModelName string
+param deployCohere bool = false
 
 @description('Set of tags to apply to all resources.')
 param tags object = {}
@@ -38,7 +39,7 @@ module aiHub 'modules/hub.bicep' = {
   }
 }
 
-module aiProject 'modules/project.bicep' = {
+module aiProject 'modules/project.bicep' = if (deployCohere) {
   name: 'project-${aiServicesName}-deployment'
   params: {
     location: cohereLocation
@@ -48,13 +49,17 @@ module aiProject 'modules/project.bicep' = {
   }
 }
 
+var cohereServerlessEndpoint = deployCohere ? aiProject.outputs.cohereServerlessEndpoint : ''
+var cohereServerlessKey = deployCohere ? aiProject.outputs.cohereServerlessKey : ''
+var cohereModelNameOutput = deployCohere ? cohereModelName : ''
+
 output aiServicesEndpoint string = aiDependencies.outputs.aiservicesTarget
 output aiservicesID string = aiDependencies.outputs.aiservicesID
 output aiservicesTarget string = aiDependencies.outputs.aiservicesTarget
-output embbeddingEndpoint string = aiProject.outputs.cohereServerlessEndpoint
-output cohereModelName string = cohereModelName
+output embbeddingEndpoint string = cohereServerlessEndpoint
+output cohereModelName string = cohereModelNameOutput
 output openAiTarget string = aiDependencies.outputs.openAiTarget
 output oaiDeploymentName string = aiDependencies.outputs.oaiDeploymentName
 output openAIModelName string = aiDependencies.outputs.openAIModelName
 output openAIEmbeddingModelName string = oaiEmbeddingModelName
-output embeddingKey string = aiProject.outputs.cohereServerlessKey
+output embeddingKey string = cohereServerlessKey

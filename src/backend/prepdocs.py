@@ -1,4 +1,3 @@
-from email.policy import default
 import os
 import glob
 from typing import Optional
@@ -21,24 +20,43 @@ from data_injestion.indexer_img_verbalize_strategy import (
 from data_injestion.strategy import Strategy
 from constants import USER_AGENT
 from processfile import ProcessFile
-from azure.identity.aio import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential, AzureCliCredential
 import argparse
 
 
-def load_environment_variables():
+def _ensure_env_vars(vars_to_check: list[str]):
+    for var in vars_to_check:
+        if not os.getenv(var):
+            raise ValueError(f"Missing environment variable: {var}")
+
+
+def load_environment_variables(indexer_strategy: str):
     """Loads environment variables from the .env file."""
-    required_vars = [
+    base_required_vars = [
         "DOCUMENTINTELLIGENCE_ENDPOINT",
-        "AZURE_INFERENCE_EMBED_ENDPOINT",
         "SEARCH_SERVICE_ENDPOINT",
         "SEARCH_INDEX_NAME",
         "AZURE_OPENAI_ENDPOINT",
         "AZURE_OPENAI_DEPLOYMENT",
         "ARTIFACTS_STORAGE_ACCOUNT_URL",
+        "ARTIFACTS_STORAGE_CONTAINER",
+        "SAMPLES_STORAGE_CONTAINER",
+        "AZURE_OPENAI_EMBEDDING_DEPLOYMENT",
+        "AZURE_SUBSCRIPTION_ID",
+        "AZURE_RESOURCE_GROUP",
     ]
-    for var in required_vars:
-        if not os.getenv(var):
-            raise ValueError(f"Missing environment variable: {var}")
+
+    inference_required_vars = (
+        [
+            "AZURE_INFERENCE_EMBED_ENDPOINT",
+            "AZURE_INFERENCE_EMBED_MODEL_NAME",
+            "AZURE_INFERENCE_EMBED_API_KEY",
+        ]
+        if indexer_strategy == "self-multimodal-embedding"
+        else []
+    )
+
+    _ensure_env_vars(base_required_vars + inference_required_vars)
 
 
 def setup_directories():
@@ -65,26 +83,18 @@ def get_blob_storage_credentials():
 
 
 async def main(source: str, indexer_Strategy: Optional[str] = None):
-    load_environment_variables()
+    if not indexer_Strategy:
+        raise ValueError("Indexer strategy must be provided.")
+
+    load_environment_variables(indexer_Strategy)
     documents_to_process_folder, documents_output_folder = setup_directories()
 
-    tokenCredential = DefaultAzureCredential()
+    # tokenCredential = DefaultAzureCredential()
+    tokenCredential = AzureCliCredential()
 
     document_client = DocumentIntelligenceClient(
         endpoint=os.environ["DOCUMENTINTELLIGENCE_ENDPOINT"],
         credential=tokenCredential,
-    )
-
-    text_embedding_client = EmbeddingsClient(
-        endpoint=os.environ["AZURE_INFERENCE_EMBED_ENDPOINT"],
-        credential=tokenCredential,
-        model=os.environ["AZURE_INFERENCE_EMBED_MODEL_NAME"],
-    )
-
-    image_embedding_client = ImageEmbeddingsClient(
-        endpoint=os.environ["AZURE_INFERENCE_EMBED_ENDPOINT"],
-        credential=tokenCredential,
-        model=os.environ["AZURE_INFERENCE_EMBED_MODEL_NAME"],
     )
 
     search_client = SearchClient(
@@ -126,6 +136,8 @@ async def main(source: str, indexer_Strategy: Optional[str] = None):
 
     strategy: Strategy | None = None
     request: Optional[ProcessRequest] = None
+    text_embedding_client = None
+    image_embedding_client = None
     if indexer_Strategy == "indexer-image-verbal":
         strategy = IndexerImgVerbalizationStrategy()
         request = ProcessRequest(
@@ -148,6 +160,18 @@ async def main(source: str, indexer_Strategy: Optional[str] = None):
         )
         await strategy.run(request) if request is not None else None
     elif indexer_Strategy == "self-multimodal-embedding":
+        text_embedding_client = EmbeddingsClient(
+            endpoint=os.environ["AZURE_INFERENCE_EMBED_ENDPOINT"],
+            credential=tokenCredential,
+            model=os.environ["AZURE_INFERENCE_EMBED_MODEL_NAME"],
+        )
+
+        image_embedding_client = ImageEmbeddingsClient(
+            endpoint=os.environ["AZURE_INFERENCE_EMBED_ENDPOINT"],
+            credential=tokenCredential,
+            model=os.environ["AZURE_INFERENCE_EMBED_MODEL_NAME"],
+        )
+
         process_file = ProcessFile(
             document_client,
             text_embedding_client,
@@ -172,8 +196,10 @@ async def main(source: str, indexer_Strategy: Optional[str] = None):
 
     print("Done")
     await document_client.close()
-    await text_embedding_client.close()
-    await image_embedding_client.close()
+    if text_embedding_client:
+        await text_embedding_client.close()
+    if image_embedding_client:
+        await image_embedding_client.close()
     await blob_service_client.close()
     await search_client.close()
     await index_client.close()

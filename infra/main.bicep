@@ -49,7 +49,15 @@ param openAiLocation string
     type: 'location'
   }
 })
-param cohereServerlessLocation string
+param cohereServerlessLocation string = 'eastus'
+
+@description('Whether to deploy the Cohere serverless endpoint for multimodal embeddings.')
+@metadata({
+  azd: {
+    type: 'boolean'
+  }
+})
+param deployCohere bool = false
 
 var resourcePrefix = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environment, location))
@@ -98,6 +106,7 @@ module aiFoundry 'ai/main.bicep' = {
     location: location
     cohereLocation: cohereServerlessLocation
     tags: tags
+    deployCohere: deployCohere
   }
 }
 

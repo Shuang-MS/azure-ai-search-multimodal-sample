@@ -6,6 +6,7 @@ from rich.logging import RichHandler
 from openai import AsyncAzureOpenAI
 from azure.identity.aio import (
     DefaultAzureCredential,
+    AzureCliCredential,
     get_bearer_token_provider,
 )
 from azure.search.documents.aio import SearchClient
@@ -39,7 +40,8 @@ async def list_indexes(index_client: SearchIndexClient):
 
 
 async def create_app():
-    tokenCredential = DefaultAzureCredential()
+    # tokenCredential = DefaultAzureCredential()
+    tokenCredential = AzureCliCredential()
     tokenProvider = get_bearer_token_provider(
         tokenCredential,
         "https://cognitiveservices.azure.com/.default",
