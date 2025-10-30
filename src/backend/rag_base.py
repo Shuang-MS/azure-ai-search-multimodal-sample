@@ -1,6 +1,5 @@
 import logging
 import json
-import os
 import time
 from typing import List
 import uuid
@@ -8,7 +7,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from aiohttp import web
 import instructor
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 from grounding_retriever import GroundingRetriever
 from models import (
     AnswerFormat,
@@ -34,7 +33,7 @@ class MessageType(Enum):
 class RagBase(ABC):
     def __init__(
         self,
-        openai_client: AsyncAzureOpenAI,
+        openai_client: AsyncOpenAI,
         chatcompletions_model_name: str,
     ):
         self.openai_client = openai_client

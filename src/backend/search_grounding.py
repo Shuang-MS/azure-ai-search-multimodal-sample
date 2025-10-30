@@ -1,6 +1,6 @@
 import logging
-from typing import List, Dict, TypedDict
-from openai import AsyncAzureOpenAI
+from typing import List
+from openai import AsyncOpenAI
 from data_model import DataModel
 from prompts import SEARCH_QUERY_SYSTEM_PROMPT
 from models import Message, SearchConfig, GroundingResults
@@ -15,7 +15,7 @@ class SearchGroundingRetriever(GroundingRetriever):
     def __init__(
         self,
         search_client: SearchClient,
-        openai_client: AsyncAzureOpenAI,
+        openai_client: AsyncOpenAI,
         data_model: DataModel,
         chatcompletions_model_name: str,
     ):

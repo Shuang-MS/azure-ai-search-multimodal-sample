@@ -4,12 +4,11 @@ from typing import Optional
 import instructor
 import aiofiles
 import asyncio
-import sys
 
 from azure.core.pipeline.policies import UserAgentPolicy
 from azure.ai.documentintelligence.aio import DocumentIntelligenceClient
 from azure.ai.inference.aio import EmbeddingsClient, ImageEmbeddingsClient
-from openai import AsyncAzureOpenAI, api_version
+from openai import AsyncOpenAI
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.indexes.aio import SearchIndexClient, SearchIndexerClient
 from azure.storage.blob.aio import BlobServiceClient
@@ -118,15 +117,14 @@ async def main(source: str, indexer_Strategy: Optional[str] = None):
     )
 
     instructor_openai_client = instructor.from_openai(
-        AsyncAzureOpenAI(
-            azure_ad_token=(
+        AsyncOpenAI(
+            api_key=(
                 await tokenCredential.get_token(
                     "https://cognitiveservices.azure.com/.default"
                 )
             ).token,
-            api_version="2024-08-01-preview",
-            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        )
+            base_url=f'{os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")}/openai/v1/',
+        ),
     )
 
     blob_service_client = BlobServiceClient(

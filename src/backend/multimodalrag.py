@@ -1,18 +1,13 @@
-import json
 import logging
-from os import path
 from aiohttp import web
-from azure.search.documents.aio import SearchClient
-from azure.search.documents.agent import KnowledgeAgentRetrievalClient
 from azure.storage.blob import ContainerClient
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 from typing import List
 from grounding_retriever import GroundingRetriever
 from knowledge_agent import KnowledgeAgentGrounding
 from helpers import get_blob_as_base64
 from search_grounding import SearchGroundingRetriever
 from rag_base import RagBase
-from data_model import DataModel
 from prompts import (
     SYSTEM_PROMPT_NO_META_DATA,
 )
@@ -29,7 +24,7 @@ class MultimodalRag(RagBase):
         self,
         knowledge_agent: KnowledgeAgentGrounding,
         search_grounding: SearchGroundingRetriever,
-        openai_client: AsyncAzureOpenAI,
+        openai_client: AsyncOpenAI,
         chatcompletions_model_name: str,
         container_client: ContainerClient,
     ):
@@ -137,10 +132,16 @@ class MultimodalRag(RagBase):
                         }
                     )
                     # blob path differs if index was created through self script in repo or from the portal mulitmodal RAG wizard
-                    blob_client = self.container_client.get_blob_client(doc["content"])
+                    content_path = doc["content"]
+                    blob_path = content_path
+                    container_name = self.container_client.container_name
+
+                    if blob_path.startswith(f"{container_name}/"):
+                        blob_path = blob_path[len(container_name) + 1 :]
+
+                    blob_client = self.container_client.get_blob_client(blob_path)
                     image_base64 = await get_blob_as_base64(blob_client)
                     if image_base64 is None:
-                        content_path = doc["content"]
                         path_split = content_path.split("/")
                         content_container = path_split[0]
                         content_blob = "/".join(path_split[1:])

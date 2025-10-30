@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from aiohttp import web
 from rich.logging import RichHandler
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 from azure.identity.aio import (
     DefaultAzureCredential,
     AzureCliCredential,
@@ -86,10 +86,9 @@ async def create_app():
         chatcompletions_model_name,
     )
 
-    openai_client = AsyncAzureOpenAI(
-        azure_ad_token_provider=tokenProvider,
-        api_version="2024-08-01-preview",
-        azure_endpoint=openai_endpoint,
+    openai_client = AsyncOpenAI(
+        base_url=f'{openai_endpoint.rstrip("/")}/openai/v1/',
+        api_key=tokenProvider,
         timeout=30,
     )
 
