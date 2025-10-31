@@ -4,36 +4,28 @@ targetScope = 'subscription'
 @maxLength(64)
 @description('Name which is used to generate a short unique hash for each resource')
 param environment string
+
 @description('Object ID of the user that will be used to deploy the resources. See readme for more details.')
 param principalId string
+
 @minLength(1)
 @description('Primary location for all resources')
+@allowed([
+  'australiaeast'
+  'eastus2'
+  'japaneast'
+  'swedencentral'
+  'westus3'
+])
 param location string
+
 // https://learn.microsoft.com/azure/ai-services/openai/concepts/models?tabs=global-standard%2Cstandard-chat-completions#models-by-deployment-type
 @description('Location for the OpenAI resources')
 @allowed([
   'australiaeast'
-  'brazilsouth'
-  'canadaeast'
-  'eastus'
   'eastus2'
-  'francecentral'
-  'germanywestcentral'
   'japaneast'
-  'koreacentral'
-  'northcentralus'
-  'norwayeast'
-  'polandcentral'
-  'southafricanorth'
-  'southcentralus'
-  'southindia'
-  'spaincentral'
   'swedencentral'
-  'switzerlandnorth'
-  'uaenorth'
-  'uksouth'
-  'westeurope'
-  'westus'
   'westus3'
 ])
 @metadata({
@@ -42,6 +34,7 @@ param location string
   }
 })
 param openAiLocation string
+
 @description('Primary location for cohere serverless deployment')
 @allowed(['eastus', 'eastus2', 'westus','westus3','northcentralus','southcentralus','swedencentral'])
 @metadata({
@@ -51,13 +44,17 @@ param openAiLocation string
 })
 param cohereServerlessLocation string = 'eastus'
 
-@description('Whether to deploy the Cohere serverless endpoint for multimodal embeddings.')
+@description('Indexer strategy used when preparing documents.')
+@allowed([
+  'indexer-image-verbal'
+  'self-multimodal-embedding'
+])
 @metadata({
   azd: {
-    type: 'boolean'
+    type: 'string'
   }
 })
-param deployCohere bool = false
+param indexerStrategy string = 'indexer-image-verbal'
 
 var resourcePrefix = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environment, location))
@@ -69,8 +66,8 @@ var searchIndexName = 'state-of-ai'
 var knowledgeAgentName = 'state-of-ai-knowledge-agent'
 var mmArtifacts = 'mm-knowledgestore-artifacts'
 var mmSampleDocs = 'mm-sample-docs-container'
-var openAiModelName = 'gpt-4o'
-var openAiDeploymentName = 'gpt-4o'
+var openAiModelName = 'gpt-4.1'
+var openAiDeploymentName = 'gpt-4.1'
 var multiModalEmbeddingModel = 'Cohere-embed-v3-multilingual'
 var openAiEmbeddingModelName = 'text-embedding-3-large'
 var cogServicesName = '${resourcePrefix.cognitiveServicesAccounts}${resourceToken}'
@@ -106,7 +103,7 @@ module aiFoundry 'ai/main.bicep' = {
     location: location
     cohereLocation: cohereServerlessLocation
     tags: tags
-    deployCohere: deployCohere
+    indexerStrategy: indexerStrategy
   }
 }
 
@@ -135,6 +132,7 @@ var appsettings = {
   ARTIFACTS_STORAGE_CONTAINER: mmArtifacts
   SAMPLES_STORAGE_CONTAINER: mmSampleDocs
   KNOWLEDGE_AGENT_NAME: knowledgeAgentName
+  INDEXER_STRATEGY: indexerStrategy
 }
 
 module appservice 'host/appservices.bicep' = {
@@ -324,3 +322,4 @@ output AZURE_WEBAPP_PRINCIPAL_ID string = appservice.outputs.webAppPrincipalId
 output AZURE_OPENAI_EMBEDDING_DEPLOYMENT string = openAiEmbeddingModelName
 output KNOWLEDGE_AGENT_NAME string = knowledgeAgentName
 output AZURE_RESOURCE_GROUP string = rgName
+output INDEXER_STRATEGY string = indexerStrategy

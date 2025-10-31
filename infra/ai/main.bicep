@@ -7,11 +7,18 @@ param oaiDeploymentName string
 param oaimodelName string
 param oaiEmbeddingModelName string
 param cohereModelName string
-param deployCohere bool = false
+
+@description('Indexer strategy used for document ingestion.')
+@allowed([
+  'indexer-image-verbal'
+  'self-multimodal-embedding'
+])
+param indexerStrategy string = 'indexer-image-verbal'
 
 @description('Set of tags to apply to all resources.')
 param tags object = {}
 
+var deployCohere = toLower(indexerStrategy) == 'self-multimodal-embedding'
 
 
 // Dependent resources for the Azure Machine Learning workspace
@@ -24,7 +31,6 @@ module aiDependencies 'modules/cogServices.bicep' = {
     aiServicesName: aiServicesName
     openAILocation: openAILocation
     oaiEmbeddingModelName: oaiEmbeddingModelName
-
   }
 }
 

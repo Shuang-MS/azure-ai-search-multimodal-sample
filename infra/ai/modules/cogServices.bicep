@@ -56,7 +56,7 @@ resource oaideployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10
     model: {
       format: 'OpenAI'
       name: oaimodelName
-      version: '2024-11-20'
+      version: '2025-04-14'
     }
     versionUpgradeOption: 'OnceNewDefaultVersionAvailable'
     currentCapacity: 50

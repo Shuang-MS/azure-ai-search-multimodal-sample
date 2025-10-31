@@ -86,12 +86,14 @@ async def create_app():
         chatcompletions_model_name,
     )
 
+    logging.info("Using OpenAI endpoint: %s", openai_endpoint)
     openai_client = AsyncOpenAI(
         base_url=f'{openai_endpoint.rstrip("/")}/openai/v1/',
         api_key=tokenProvider,
         timeout=30,
     )
 
+    logging.info("Using Search endpoint: %s", search_endpoint)
     search_grounding = SearchGroundingRetriever(
         search_client,
         openai_client,
@@ -110,8 +112,10 @@ async def create_app():
         os.environ["SAMPLES_STORAGE_CONTAINER"]
     )
 
+    logging.info("Creating web application")
     app = web.Application(middlewares=[])
 
+    logging.info("Attaching MultimodalRag to web application")
     mmrag = MultimodalRag(
         knowledge_agent,
         search_grounding,
@@ -125,6 +129,7 @@ async def create_app():
         blob_service_client, samples_container_client
     )
 
+    logging.info("Adding routes to web application")
     current_directory = Path(__file__).parent
     app.add_routes(
         [
