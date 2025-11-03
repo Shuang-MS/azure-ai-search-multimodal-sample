@@ -54,7 +54,7 @@ param cohereServerlessLocation string = 'eastus'
     type: 'string'
   }
 })
-param indexerStrategy string = 'indexer-image-verbal'
+param indexerStrategy string
 
 var resourcePrefix = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environment, location))

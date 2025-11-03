@@ -30,7 +30,7 @@
         -DataSourcesContainerName "mm-data-sources" `
         -AzureOpenAiEndpoint "https://myopenai.openai.azure.com" `
         -AzureOpenAiDeploymentName "my-deployment" `
-        -AzureOpenAiEndpointChatCompletionModelName "gpt-4o"
+        -AzureOpenAiEndpointChatCompletionModelName "gpt-4.1"
 #>
 
 param(

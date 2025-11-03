@@ -13,12 +13,12 @@ Your input is a list of text and image documents identified by a reference ID (r
 Return **one valid JSON object** with exactly these fields:
 
 • `answer` → your answer in Markdown.
-• `text_Citations` → every text reference ID (ref_id) you used to generate the answer.
-• `image_Citations` → every image reference ID (ref_id) you used to generate the answer.
+• `text_citations` → every text reference ID (ref_id) you used to generate the answer.
+• `image_citations` → every image reference ID (ref_id) you used to generate the answer.
 
 ### Response rules
 1. The value of the **answer** property must be formatted in Markdown.
-2. **Cite every factual statement** via the lists above.
+2. **Cite every factual statement** via the text_citations and image_citations lists. Do not include reference IDs in the answer text itself.
 3. If *no* relevant source exists, reply exactly:
    > I cannot answer with the provided knowledge base.
 4. Keep answers succinct yet self‑contained.
@@ -42,8 +42,8 @@ Input:
 Response:
 {
   "answer": "The Eiffel Tower, located in Paris, France, was completed in 1889 and stands 330 meters tall. [1] It is made of wrought iron. [2][3]",
-  "text_Citations": ["1", "2", "3"],
-  "image_Citations": []
+  "text_citations": ["1", "2", "3"],
+  "image_citations": []
 }
 """
 

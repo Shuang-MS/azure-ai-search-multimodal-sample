@@ -46,15 +46,15 @@ def getAzureOpenAIEmbeddingSkill(deploymentId, resourceUri, modelName):
         outputs=[OutputFieldMappingEntry(name="embedding", target_name="text_vector")],
         resource_url=resourceUri,
         deployment_name=deploymentId,
-        dimensions=1536,
+        dimensions=3072,
         model_name=modelName,
     )
 
 
-def getChatCompletionSkill(uri):
+def getChatCompletionSkill(uri, deploymentName):
     return ChatCompletionSkill(
         name="chat-completion-skill",
-        uri=f"{uri}/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21",
+        uri=f"{uri.rstrip('/')}/openai/deployments/{deploymentName}/chat/completions?api-version=2025-04-01-preview",
         timeout=timedelta(minutes=1),
         context="/document/normalized_images/*",
         inputs=[
@@ -74,8 +74,37 @@ def getChatCompletionSkill(uri):
         outputs=[
             OutputFieldMappingEntry(name="response", target_name="verbalizedImage")
         ],
+        degree_of_parallelism=1
     )
 
+# Todo: Not yet support, failed with 404 Resource Not Found
+def getChatCompletionSkillV1(uri, deploymentName):
+    return ChatCompletionSkill(
+        name="chat-completion-skill",
+        uri=f"{uri.rstrip('/')}/openai/v1/",
+        timeout=timedelta(minutes=1),
+        context="/document/normalized_images/*",
+        common_model_parameters={
+            "model": deploymentName,
+        },
+        inputs=[
+            InputFieldMappingEntry(
+                name="systemMessage",
+                source='=\'You are tasked with generating concise, accurate descriptions of images, figures, diagrams, or charts in documents. The goal is to capture the key information and meaning conveyed by the image without including extraneous details like style, colors, visual aesthetics, or size.\n\nInstructions:\nContent Focus: Describe the core content and relationships depicted in the image.\n\nFor diagrams, specify the main elements and how they are connected or interact.\nFor charts, highlight key data points, trends, comparisons, or conclusions.\nFor figures or technical illustrations, identify the components and their significance.\nClarity & Precision: Use concise language to ensure clarity and technical accuracy. Avoid subjective or interpretive statements.\n\nAvoid Visual Descriptors: Exclude details about:\n\nColors, shading, and visual styles.\nImage size, layout, or decorative elements.\nFonts, borders, and stylistic embellishments.\nContext: If relevant, relate the image to the broader content of the technical document or the topic it supports.\n\nExample Descriptions:\nDiagram: "A flowchart showing the four stages of a machine learning pipeline: data collection, preprocessing, model training, and evaluation, with arrows indicating the sequential flow of tasks."\n\nChart: "A bar chart comparing the performance of four algorithms on three datasets, showing that Algorithm A consistently outperforms the others on Dataset 1."\n\nFigure: "A labeled diagram illustrating the components of a transformer model, including the encoder, decoder, self-attention mechanism, and feedforward layers."\'',
+            ),
+            InputFieldMappingEntry(
+                name="userMessage",
+                source="='Please describe this image.'",
+            ),
+            InputFieldMappingEntry(
+                name="image",
+                source="/document/normalized_images/*/data",
+            ),
+        ],
+        outputs=[
+            OutputFieldMappingEntry(name="response", target_name="verbalizedImage")
+        ],
+    )
 
 def getAzureOpenAIEmbeddingSkillForVerbalizedImage(
     deploymentId, resourceUri, modelName
@@ -95,7 +124,7 @@ def getAzureOpenAIEmbeddingSkillForVerbalizedImage(
         ],
         resource_url=resourceUri,
         deployment_name=deploymentId,
-        dimensions=1536,
+        dimensions=3072,
         model_name=modelName,
     )
 

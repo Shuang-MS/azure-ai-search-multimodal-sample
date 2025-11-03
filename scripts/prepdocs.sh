@@ -36,7 +36,7 @@ echo 'Run the document preparation script'
 # args_indexer_strategy=${1:-'self-multimodal-embedding'}
 args_indexer_strategy=$1
 if [ -z "$args_indexer_strategy" ]; then
-  raise ValueError("Indexer strategy argument is required")
+  echo "Error: Indexer strategy argument is required"
   exit 1
 fi
 

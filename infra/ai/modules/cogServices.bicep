@@ -50,7 +50,7 @@ resource oaideployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10
   name: oaiDeploymentName
   sku: {
     name: 'GlobalStandard'
-    capacity: 50
+    capacity: 100
   }
   properties: {
     model: {
@@ -59,7 +59,7 @@ resource oaideployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10
       version: '2025-04-14'
     }
     versionUpgradeOption: 'OnceNewDefaultVersionAvailable'
-    currentCapacity: 50
+    currentCapacity: 100
     raiPolicyName: 'Microsoft.DefaultV2'
   }
 }
@@ -72,7 +72,7 @@ resource oai_embedding_deployment 'Microsoft.CognitiveServices/accounts/deployme
   ]
   sku: {
     name: 'GlobalStandard'
-    capacity: 50
+    capacity: 100
   }
   properties: {
     model: {
@@ -81,7 +81,7 @@ resource oai_embedding_deployment 'Microsoft.CognitiveServices/accounts/deployme
       version: '1'
     }
     versionUpgradeOption: 'NoAutoUpgrade'
-    currentCapacity: 50
+    currentCapacity: 100
     raiPolicyName: 'Microsoft.DefaultV2'
   }
 }

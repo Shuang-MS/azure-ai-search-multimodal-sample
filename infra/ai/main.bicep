@@ -18,7 +18,7 @@ param indexerStrategy string = 'indexer-image-verbal'
 @description('Set of tags to apply to all resources.')
 param tags object = {}
 
-var deployCohere = toLower(indexerStrategy) == 'self-multimodal-embedding'
+var mmEmbed = toLower(indexerStrategy) == 'self-multimodal-embedding'
 
 
 // Dependent resources for the Azure Machine Learning workspace
@@ -34,7 +34,7 @@ module aiDependencies 'modules/cogServices.bicep' = {
   }
 }
 
-module aiHub 'modules/hub.bicep' = {
+module aiHub 'modules/hub.bicep' = if (mmEmbed) {
   name: 'hub-${aiServicesName}-deployment'
   params: {
     location: cohereLocation
@@ -45,7 +45,7 @@ module aiHub 'modules/hub.bicep' = {
   }
 }
 
-module aiProject 'modules/project.bicep' = if (deployCohere) {
+module aiProject 'modules/project.bicep' = if (mmEmbed) {
   name: 'project-${aiServicesName}-deployment'
   params: {
     location: cohereLocation
@@ -55,9 +55,9 @@ module aiProject 'modules/project.bicep' = if (deployCohere) {
   }
 }
 
-var cohereServerlessEndpoint = deployCohere ? aiProject.outputs.cohereServerlessEndpoint : ''
-var cohereServerlessKey = deployCohere ? aiProject.outputs.cohereServerlessKey : ''
-var cohereModelNameOutput = deployCohere ? cohereModelName : ''
+var cohereServerlessEndpoint = mmEmbed ? aiProject.outputs.cohereServerlessEndpoint : ''
+var cohereServerlessKey = mmEmbed ? aiProject.outputs.cohereServerlessKey : ''
+var cohereModelNameOutput = mmEmbed ? cohereModelName : ''
 
 output aiServicesEndpoint string = aiDependencies.outputs.aiservicesTarget
 output aiservicesID string = aiDependencies.outputs.aiservicesID

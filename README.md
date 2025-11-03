@@ -51,7 +51,7 @@ You can create an index using the AI Search portal's quick wizard for the multim
         -DataSourcesContainerName "data-sources" `
         -AzureOpenAiEndpoint "https://myopenai.openai.azure.com" `
         -AzureOpenAiDeploymentName "my-deployment" `
-        -AzureOpenAiEndpointChatCompletionModelName "gpt-4o"
+        -AzureOpenAiEndpointChatCompletionModelName "gpt-4.1"
    ```
 
    Replace the placeholders (`<...>`) with your specific values. This script will configure the app to use the newly created index.  
@@ -102,7 +102,6 @@ Install the below tools
   - Run ```azd auth login```
   - Run ```azd env new <YOUR_ENVIRONMENT_NAME>```
   - Run ```azd env set AZURE_PRINCIPAL_ID $(az ad signed-in-user show --query id -o tsv)```
-  - Change "indexer-image-verbal" to "self-multimodal-embedding" to use Cohere model for embedding
   - Run azd up. This command will
     - Provision the azure resources
     - Package the application
@@ -136,9 +135,9 @@ NOTE: It may take 5-10 minutes after you see 'SUCCESS' for the application to be
    - Run ```scripts\prepdocs.ps1```
 - You could also use different indexer strategies **["indexer-image-verbal", "self-multimodal-embedding"]**
 - To create new index with a different strategy
-  - Run ```azd set SEARCH_INDEX_NAME <new-index-name>```
+  - Run ```azd env set SEARCH_INDEX_NAME <new-index-name>```
   - **On Windows** Run ```scripts\prepdocs.ps1 -IndexerStrategy indexer-image-verbal ```
-  - **On Linux** Run ```bash scripts/prepdocs.sh indexer-image-verbal ```
+  - **On Linux** Run ```scripts/prepdocs.sh indexer-image-verbal ```
 ---
 
 ## Azure Services Used for Deployment  
@@ -154,7 +153,7 @@ The following Azure services are used as part of this deployment. Ensure you ver
    - **LLM Deployment**: For running the large language model (LLM) for verbalization and used by the RAG orchestrator. 
    - **Embedding Model Deployment**: Used for creating embeddings for vector search and other tasks.   
    - Ensure you check the pricing for both LLM and embedding deployments.
-   - This sample currently supports gpt-4o, (AOAI) text-embedding-large, cohere-serverless-v3  
+   - This sample currently supports gpt-4.1, (AOAI) text-embedding-large, cohere-serverless-v3  
   
 4. **Azure Blob Storage Account**  
    - Used to store extracted images and other data. Verify the pricing for storage and associated operations. Review [pricing](https://azure.microsoft.com/pricing/details/storage/blobs/).

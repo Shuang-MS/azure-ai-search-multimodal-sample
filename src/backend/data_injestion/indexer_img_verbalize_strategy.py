@@ -64,6 +64,7 @@ class IndexerImgVerbalizationStrategy(Strategy):
                 getDocumentIntelligenceLayOutSkill(),
                 getChatCompletionSkill(
                     uri=request.chatCompletionEndpoint,
+                    deploymentName=request.chatCompletionDeployment
                 ),
                 getAzureOpenAIEmbeddingSkill(
                     deploymentId=request.aoaiEmbeddingDeployment,
@@ -230,7 +231,7 @@ class IndexerImgVerbalizationStrategy(Strategy):
                 name="content_embedding",
                 hidden=False,
                 type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                vector_search_dimensions=1536,
+                vector_search_dimensions=3072,
                 searchable=True,
                 vector_search_profile_name=f"{request.indexName}-profile",
             ),
@@ -305,12 +306,10 @@ class IndexerImgVerbalizationStrategy(Strategy):
                         prioritized_fields=SemanticPrioritizedFields(
                             title_field=SemanticField(
                                 field_name="document_title",
-                                weight=1.0,
                             ),
                             content_fields=[
                                 SemanticField(
                                     field_name="content_text",
-                                    weight=1.0,
                                 )
                             ],
                         ),

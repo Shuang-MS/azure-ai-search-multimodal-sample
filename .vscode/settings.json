@@ -17,7 +17,7 @@
     },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true
+        "editor.formatOnSave": false
     },
     "search.exclude": {
         "**/node_modules": true,
