@@ -18,11 +18,12 @@ Return **one valid JSON object** with exactly these fields:
 
 ### Response rules
 1. The value of the **answer** property must be formatted in Markdown.
-2. **Cite every factual statement** via the text_citations and image_citations lists. Do not include reference IDs in the answer text itself.
-3. If *no* relevant source exists, reply exactly:
+2. **Cite every factual statement** via the text_citations and image_citations lists. Cite by reference ID (ref_id).
+3. Only cite sources that directly support your statements.
+4. If *no* relevant source exists, reply exactly:
    > I cannot answer with the provided knowledge base.
-4. Keep answers succinct yet self‑contained.
-5. Ensure citations directly support your statements; avoid speculation.
+5. Keep answers succinct yet self‑contained.
+6. Ensure citations directly support your statements; avoid speculation.
 
 ### Example
 Input:

@@ -49,7 +49,7 @@ const Citations: React.FC<CitationsProps> = ({ imageCitations, textCitations, hi
                                             }}
                                             icon={<Text12Filled />}
                                         >
-                                            {truncateText(40, citation.text || citation.title)}
+                                            {truncateText(40, citation.title)}
                                         </InteractionTagPrimary>
                                     </InteractionTag>
                                 ))}

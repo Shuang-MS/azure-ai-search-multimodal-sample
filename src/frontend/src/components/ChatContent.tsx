@@ -11,6 +11,10 @@ import Citations from "./Citations";
 import ProcessingSteps from "./ProcessingSteps";
 import { Copy20Regular, BrainCircuit20Regular } from "@fluentui/react-icons";
 
+const getMessageKey = (message: Thread) => message.message_id || `${message.request_id}:${message.type}:${message.role}`;
+const messageHasCitations = (message: Thread) =>
+    (message.textCitations?.length ?? 0) > 0 || (message.imageCitations?.length ?? 0) > 0;
+
 interface Props {
     processingStepMsg: Record<string, ProcessingStepsMessage[]>;
     thread: Thread[];
@@ -23,6 +27,7 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
     const [showCopied, setShowCopied] = React.useState(false);
 
     const chatContainerRef = useRef<HTMLDivElement>(null);
+    const loggedMessageIdsRef = useRef<Set<string>>(new Set<string>());
     const messageToBeCopied: Record<string, string> = {};
 
     useEffect(() => {
@@ -41,8 +46,25 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
         }, {})
     );
 
+    useEffect(() => {
+        thread.forEach(message => {
+            const messageKey = getMessageKey(message);
+            if (!loggedMessageIdsRef.current.has(messageKey)) {
+                console.info("Chat message", {
+                    requestId: message.request_id,
+                    type: message.type,
+                    textCitationsCount: message.textCitations?.length ?? 0,
+                    imageCitationsCount: message.imageCitations?.length ?? 0,
+                    hasAnswer: Boolean(message.answerPartial?.answer),
+                    hasCitations: messageHasCitations(message)
+                });
+                loggedMessageIdsRef.current.add(messageKey);
+            }
+        });
+    }, [thread]);
+
     // Recognize citations within square brackets, e.g. ["anystring"]
-    const citationRegex = /\[([^\]]+)\]/g;
+    const citationRegex = /\[([^\]]+_(?:text_sections|normalized_images)_\d+)\]/g;
     const citationHit = (index: number, docId: string) => {
         return (
             <sup
@@ -80,6 +102,8 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                     <>
                         <div key={index} className="chat-message-group">
                             {group.map((message, msgIndex) => {
+                                const hasCitations = messageHasCitations(message);
+
                                 if (message.type === ThreadType.Answer) {
                                     messageToBeCopied[message.request_id] = message.answerPartial?.answer || "";
                                 }
@@ -97,7 +121,8 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                             {message.type === ThreadType.Answer && (
                                                 <ReactMarkdown
                                                     components={{
-                                                        p: ({ children }) => <p>{renderWithCitations(children)}</p>
+                                                        p: ({ children }) => <p>{renderWithCitations(children)}</p>,
+                                                        li: ({ children }) => <li>{renderWithCitations(children)}</li>
                                                     }}
                                                     remarkPlugins={[remarkGfm]}
                                                 >
@@ -110,7 +135,7 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                                 </div>
                                             )}
 
-                                            {(message.type === ThreadType.Citation || message.type === ThreadType.Error) && (
+                                            {(message.type === ThreadType.Error || message.type === ThreadType.Citation || hasCitations) && (
                                                 <>
                                                     <div className="chat-footer">
                                                         <Tooltip
@@ -148,11 +173,13 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                                             ></Button>
                                                         </Tooltip>
                                                     </div>
-                                                    <Citations
-                                                        imageCitations={message.imageCitations || []}
-                                                        textCitations={message.textCitations || []}
-                                                        highlightedCitation={highlightedCitation}
-                                                    />
+                                                    {hasCitations && (
+                                                        <Citations
+                                                            imageCitations={message.imageCitations || []}
+                                                            textCitations={message.textCitations || []}
+                                                            highlightedCitation={highlightedCitation}
+                                                        />
+                                                    )}
                                                 </>
                                             )}
                                         </div>
