@@ -18,7 +18,8 @@ Return **one valid JSON object** with exactly these fields:
 
 ### Response rules
 1. The value of the **answer** property must be formatted in Markdown.
-2. **Cite every factual statement** via the text_citations and image_citations lists. Cite by reference ID (ref_id).
+2. **Cite every factual statement** via the text_citations and image_citations lists. Cite by the exact reference ID (ref_id), and never add, edit, or fabricate reference IDs.
+3. Do **NOT** assume the ref_id values as urls. Do **NOT** format them as links in the **answer** property.
 3. Only cite sources that directly support your statements.
 4. If *no* relevant source exists, reply exactly:
    > I cannot answer with the provided knowledge base.

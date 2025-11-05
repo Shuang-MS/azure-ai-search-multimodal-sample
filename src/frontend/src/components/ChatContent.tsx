@@ -64,7 +64,7 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
     }, [thread]);
 
     // Recognize citations within square brackets, e.g. ["anystring"]
-    const citationRegex = /\[([^\]]+_(?:text_sections|normalized_images)_\d+)\]/g;
+    const citationRegex = /\[((?:[^\]]+_(?:text_sections|normalized_images)_\d+)|(?:[a-z0-9]{12}_))\]/g;
     const citationHit = (index: number, docId: string) => {
         return (
             <sup

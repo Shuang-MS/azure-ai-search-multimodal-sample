@@ -9,3 +9,4 @@ data.json
 .azure
 index_payload.json
 data/
+.vscode

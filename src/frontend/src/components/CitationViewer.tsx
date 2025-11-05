@@ -8,6 +8,8 @@ import { Citation } from "../api/models";
 import "./CitationViewer.css";
 import PdfHighlighter from "./PdfHighlighter";
 
+const citationPdfCache = new Map<string, string>();
+
 interface Props {
     show: boolean;
     citation: Citation;
@@ -18,10 +20,31 @@ const CitationViewer: React.FC<Props> = ({ show, toggle, citation }) => {
     const [pdfPath, setPDFPath] = useState<string>("");
 
     useEffect(() => {
+        if (!show) {
+            setPDFPath("");
+            return;
+        }
+
+        const cacheKey = citation.content_id || citation.title;
+        const cachedPath = citationPdfCache.get(cacheKey);
+        if (cachedPath) {
+            setPDFPath(cachedPath);
+            return;
+        }
+
+        let isMounted = true;
         getCitationDocument(citation.title).then(response => {
+            if (!isMounted) {
+                return;
+            }
+            citationPdfCache.set(cacheKey, response);
             setPDFPath(response);
         });
-    }, [citation]);
+
+        return () => {
+            isMounted = false;
+        };
+    }, [citation, show]);
 
     return (
         <Drawer size="medium" position="end" separator open={show} onOpenChange={toggle} style={{ maxWidth: "550px" }}>
