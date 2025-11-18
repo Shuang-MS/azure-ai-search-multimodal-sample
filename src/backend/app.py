@@ -21,6 +21,7 @@ from knowledge_agent import KnowledgeAgentGrounding
 from constants import USER_AGENT
 from multimodalrag import MultimodalRag
 from data_model import DocumentPerChunkDataModel
+from speech import SpeechTokenService
 
 
 logging.basicConfig(
@@ -52,6 +53,9 @@ async def create_app():
     search_index_name = os.environ["SEARCH_INDEX_NAME"]
     knowledge_agent_name = os.environ["KNOWLEDGE_AGENT_NAME"]
     openai_deployment_name = os.environ["AZURE_OPENAI_DEPLOYMENT"]
+    speech_key = os.environ.get("AZURE_SPEECH_KEY")
+    speech_region = os.environ.get("AZURE_SPEECH_REGION")
+    speech_voice = os.environ.get("AZURE_SPEECH_VOICE")
 
     search_client = SearchClient(
         endpoint=search_endpoint,
@@ -121,6 +125,8 @@ async def create_app():
     )
     mmrag.attach_to_app(app, "/chat")
 
+    speech_token_service = SpeechTokenService(speech_key, speech_region, speech_voice)
+
     logging.info("Adding routes to web application")
     current_directory = Path(__file__).parent
     app.add_routes(
@@ -129,6 +135,7 @@ async def create_app():
                 "/", lambda _: web.FileResponse(current_directory / "static/index.html")
             ),
             web.get("/list_indexes", lambda _: list_indexes(index_client)),
+            web.get("/speech/token", speech_token_service.handle_token_request),
         ]
     )
     app.router.add_static("/", path=current_directory / "static", name="static")

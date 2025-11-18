@@ -1,12 +1,13 @@
 .chat-container {
-    width: 1024px;
+    width: 100%;
     flex-grow: 1;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
     overflow-y: auto;
-    max-width: 1300px;
+    max-width: 1024px;
     gap: 10px;
+    box-sizing: border-box;
 }
 .chat-container::-webkit-scrollbar {
     display: none;
@@ -51,19 +52,33 @@
     margin-top: 10px;
 }
 
+.inline-image-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    margin: 8px 0;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
 .inline-image-citation {
     display: inline-flex;
     flex-direction: column;
-    align-items: center;
-    margin: 0 8px;
-    gap: 4px;
+    align-items: flex-start;
+    flex: 0 0 auto;
+    gap: 6px;
 }
 
 .inline-image-citation img {
-    max-width: 220px;
     border-radius: 8px;
     border: 1px solid rgba(0, 0, 0, 0.08);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-width: min(100%, 480px);
+    max-height: 320px;
+    height: auto;
 }
 
 .inline-image-caption {

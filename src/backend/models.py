@@ -41,8 +41,6 @@ class AnswerFormat(BaseModel):
     """Format for chat completion responses."""
 
     answer: str
-    text_citations: List[str] = []
-    image_citations: List[str] = []
 
 
 class MessageContent(TypedDict):

@@ -323,3 +323,6 @@ output AZURE_OPENAI_EMBEDDING_DEPLOYMENT string = openAiEmbeddingModelName
 output KNOWLEDGE_AGENT_NAME string = knowledgeAgentName
 output AZURE_RESOURCE_GROUP string = rgName
 output INDEXER_STRATEGY string = indexerStrategy
+output AZURE_SPEECH_KEY string = aiFoundry.outputs.aiservicesKey
+output AZURE_SPEECH_REGION string = location
+output AZURE_SPEECH_VOICE string = 'en-US-AvaMultilingualNeural'

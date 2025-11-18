@@ -12,17 +12,40 @@ import useConfig from "../hooks/useConfig";
 import useTheme from "../hooks/useTheme";
 import { IntroTitle } from "../api/defaults";
 import { useState } from "react";
+import useSpeech from "../hooks/useSpeech";
+import useMuteSpeech from "../hooks/useMuteSpeech";
 
 function App() {
     const { config, setConfig, indexes } = useConfig();
-    const { thread, processingStepsMessage, chats, isLoading, handleQuery, onNewChat } = useChat(config);
+    const { thread, processingStepsMessage, chats, isLoading, handleQuery, onNewChat, completedRequest, streamingChunk } = useChat(config);
     const { darkMode, setDarkMode } = useTheme();
     const [newQ, setnewQ] = useState(false);
+    const speech = useSpeech();
+    const { supportsSpeech, speak, enqueueSpeechChunk, stopSpeaking } = speech;
+    const { muteMode, toggleMute } = useMuteSpeech({
+        supportsSpeech,
+        speak,
+        enqueueSpeechChunk,
+        stopSpeaking,
+        completedRequest,
+        streamingChunk
+    });
+
+    const runQuery = (query: string) => {
+        stopSpeaking();
+        handleQuery(query);
+    };
 
     return (
         <FluentProvider theme={darkMode ? webDarkTheme : webLightTheme}>
             <div className="container">
-                <Header darkMode={darkMode} toggleMode={setDarkMode} />
+                <Header
+                    darkMode={darkMode}
+                    toggleMode={setDarkMode}
+                    muteMode={muteMode}
+                    onToggleMute={toggleMute}
+                    supportsSpeech={supportsSpeech}
+                />
 
                 <div className="content-wrapper">
                     {thread.length || newQ ? (
@@ -32,7 +55,7 @@ function App() {
                             <div className="content">
                                 {thread.length ? <ChatContent thread={thread} processingStepMsg={processingStepsMessage} /> : <></>}
                                 <div className="search-footer">
-                                    <SearchInput onSearch={handleQuery} isLoading={isLoading} />
+                                    <SearchInput onSearch={runQuery} isLoading={isLoading} speech={speech} />
                                 </div>
                             </div>
                         </>
@@ -51,13 +74,13 @@ function App() {
                                         if (isNew) {
                                             setnewQ(true);
                                         } else {
-                                            handleQuery(q);
+                                            runQuery(q);
                                         }
                                     }}
                                 />
                                 <div className="search-footer">
                                     <div className="intro">
-                                        <SearchInput onSearch={handleQuery} isLoading={isLoading} />
+                                        <SearchInput onSearch={runQuery} isLoading={isLoading} speech={speech} />
                                     </div>
                                 </div>
                             </div>

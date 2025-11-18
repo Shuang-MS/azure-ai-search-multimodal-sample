@@ -69,3 +69,4 @@ output oaiDeploymentName string = aiDependencies.outputs.oaiDeploymentName
 output openAIModelName string = aiDependencies.outputs.openAIModelName
 output openAIEmbeddingModelName string = oaiEmbeddingModelName
 output embeddingKey string = cohereServerlessKey
+output aiservicesKey string = aiDependencies.outputs.aiservicesKey

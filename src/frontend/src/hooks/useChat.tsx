@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { sendChatApi } from "../api/api";
 import { Thread, ProcessingStepsMessage, Chat, ThreadType, RoleType } from "../api/models";
 import { SearchConfig } from "../components/SearchSettings";
@@ -7,9 +7,15 @@ import { SearchConfig } from "../components/SearchSettings";
 export default function useChat(config: SearchConfig) {
     const [chatId, setChatId] = useState<string>();
     const [thread, setThread] = useState<Thread[]>([]);
+    const threadRef = useRef<Thread[]>([]);
     const [processingStepsMessage, setProcessingStepsMessage] = useState<Record<string, ProcessingStepsMessage[]>>({});
     const [chats, setChats] = useState<Record<string, Chat>>();
     const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [completedRequest, setCompletedRequest] = useState<{ requestId: string; answer: string }>();
+    const [streamingChunk, setStreamingChunk] = useState<{ requestId: string; chunk: string; chunkId: string }>();
+    const activeRequestIdRef = useRef<string>();
+    const answerCacheRef = useRef<Record<string, string>>({});
+    const chunkCounterRef = useRef(0);
 
     const refreshChats = async () => {
         setChats({});
@@ -19,6 +25,9 @@ export default function useChat(config: SearchConfig) {
         setIsLoading(true);
         try {
             const request_id = new Date().getTime().toString();
+            activeRequestIdRef.current = request_id;
+            setCompletedRequest(undefined);
+            setStreamingChunk(undefined);
 
             if (!chatId) setChatId(request_id);
 
@@ -45,6 +54,7 @@ export default function useChat(config: SearchConfig) {
                         timestamp: Date.now()
                     }
                 ];
+                threadRef.current = newThread;
                 return newThread;
             });
 
@@ -65,6 +75,28 @@ export default function useChat(config: SearchConfig) {
                         });
                     } else if (message.event === "[END]") {
                         setIsLoading(false);
+                        try {
+                            const payload = message.data ? JSON.parse(message.data) : {};
+                            const completedRequestId = payload.request_id || activeRequestIdRef.current;
+                            if (completedRequestId) {
+                                const latestAnswer = [...threadRef.current]
+                                    .reverse()
+                                    .find(
+                                        msg =>
+                                            msg.request_id === completedRequestId &&
+                                            msg.type === ThreadType.Answer &&
+                                            msg.role === RoleType.Assistant
+                                    );
+                                if (latestAnswer?.answerPartial?.answer) {
+                                    setCompletedRequest({
+                                        requestId: completedRequestId,
+                                        answer: latestAnswer.answerPartial.answer
+                                    });
+                                }
+                            }
+                        } catch (err) {
+                            console.error("Failed to process END event", err);
+                        }
                     } else {
                         const data = JSON.parse(message.data);
 
@@ -93,6 +125,7 @@ export default function useChat(config: SearchConfig) {
                                         new Date(b.request_id).getTime()
                                 );
                                 refreshChats();
+                                threadRef.current = newThread;
                                 return newThread;
                             });
                         } else {
@@ -126,9 +159,33 @@ export default function useChat(config: SearchConfig) {
                                         new Date(b.request_id).getTime()
                                 );
                                 refreshChats();
-
+                                threadRef.current = newThread;
                                 return newThread;
                             });
+
+                            if (
+                                message.event === ThreadType.Answer &&
+                                data.message_id &&
+                                data.answerPartial?.answer !== undefined &&
+                                data.request_id === activeRequestIdRef.current
+                            ) {
+                                const previousAnswer = answerCacheRef.current[data.message_id] || "";
+                                const currentAnswer = data.answerPartial?.answer || "";
+                                if (currentAnswer.length >= previousAnswer.length) {
+                                    const delta = currentAnswer.slice(previousAnswer.length);
+                                    answerCacheRef.current[data.message_id] = currentAnswer;
+                                    if (delta.trim()) {
+                                        const chunkId = `${data.message_id}:${chunkCounterRef.current++}`;
+                                        setStreamingChunk({
+                                            requestId: data.request_id,
+                                            chunk: delta,
+                                            chunkId
+                                        });
+                                    }
+                                } else {
+                                    answerCacheRef.current[data.message_id] = currentAnswer;
+                                }
+                            }
                         }
                     }
                 },
@@ -147,11 +204,25 @@ export default function useChat(config: SearchConfig) {
     const onNewChat = () => {
         setChatId(undefined);
         setThread([]);
+        threadRef.current = [];
+        answerCacheRef.current = {};
+        setStreamingChunk(undefined);
+        chunkCounterRef.current = 0;
     };
 
     useEffect(() => {
         refreshChats();
     }, [config]);
 
-    return { chatId, thread, processingStepsMessage, chats, isLoading, handleQuery, onNewChat };
+    return {
+        chatId,
+        thread,
+        processingStepsMessage,
+        chats,
+        isLoading,
+        handleQuery,
+        onNewChat,
+        completedRequest,
+        streamingChunk
+    };
 }

@@ -32,10 +32,13 @@ class MessageType(Enum):
 
 
 class RagBase(ABC):
-    _CITATION_PATTERN = re.compile(
-        r"\[((?:[^\]]+_(?:text_sections|normalized_images)_\d+)|(?:[A-Za-z0-9]{12}(?:_[^\]]+)?))\]"
+    _CITATION_BLOCK_PATTERN = re.compile(r"\[([^\[\]]+)\]")
+    _CITATION_ID_PATTERN = re.compile(
+        r"(?:[^\]]+_(?:text_sections|normalized_images)_\d+|[A-Za-z0-9]{12}(?:_[^\]]+)?)"
     )
-    _STREAM_DELIMITERS = [".\n", ", ", ". ", "; ", "\n", "[", "]"]
+    _STREAM_DELIMITERS = [".\n", ". ", "\n", "[", "]", ":**"]
+
+    _STREAM_MIN_WORDS = 10  # do not emit ultra-short (<=5 word) chunks
 
     def __init__(
         self,
@@ -68,7 +71,7 @@ class RagBase(ABC):
             logger.error(f"Error processing request: {str(e)}")
             await self._send_error_message(request_id, response, str(e))
 
-        await self._send_end(response)
+        await self._send_end(request_id, response)
         return response
 
     @abstractmethod
@@ -142,22 +145,28 @@ class RagBase(ABC):
                         completed_segment = line_buffer[:end_index]
                         line_buffer = line_buffer[end_index:]
                         emitted_answer += completed_segment
+                        normalized_emitted_answer = self._normalize_citation_brackets(
+                            emitted_answer
+                        )
                         await self._send_answer_message(
                             request_id,
                             response,
                             msg_id,
-                            emitted_answer,
+                            normalized_emitted_answer,
                         )
                     complete_response = stream_response.model_dump()
 
             # Flush any remaining partial line once the stream ends so nothing is lost.
             if line_buffer:
                 emitted_answer += line_buffer
+                normalized_emitted_answer = self._normalize_citation_brackets(
+                    emitted_answer
+                )
                 await self._send_answer_message(
                     request_id,
                     response,
                     msg_id,
-                    emitted_answer,
+                    normalized_emitted_answer,
                 )
             if len(complete_response.keys()) == 0:
                 raise ValueError("No response received from chat completion stream.")
@@ -175,16 +184,25 @@ class RagBase(ABC):
             msg_id = str(uuid.uuid4())
 
             if chat_completion is not None:
+                normalized_answer = self._normalize_citation_brackets(
+                    chat_completion.answer
+                )
                 await self._send_answer_message(
-                    request_id, response, msg_id, chat_completion.answer
+                    request_id, response, msg_id, normalized_answer
                 )
                 complete_response = chat_completion.model_dump()
+                complete_response["answer"] = normalized_answer
             else:
                 raise ValueError("No response received from chat completion stream.")
 
-        answer_text = complete_response.get("answer", "")
-        text_citation_ids = complete_response.get("text_citations") or []
-        image_citation_ids = complete_response.get("image_citations") or []
+        normalized_answer = self._normalize_citation_brackets(
+            complete_response.get("answer", "")
+        )
+        complete_response["answer"] = normalized_answer
+
+        answer_text = normalized_answer
+        provided_text_citation_ids = complete_response.get("text_citations") or []
+        provided_image_citation_ids = complete_response.get("image_citations") or []
 
         extracted_citation_ids = self._extract_citation_ids_from_answer(answer_text)
         (
@@ -208,19 +226,21 @@ class RagBase(ABC):
             canonical_extracted_text_ids,
             [
                 citation_aliases.get(citation_id, citation_id)
-                for citation_id in text_citation_ids
+                for citation_id in provided_text_citation_ids
             ],
         )
         image_citation_ids = self._merge_citation_lists(
             canonical_extracted_image_ids,
             [
                 citation_aliases.get(citation_id, citation_id)
-                for citation_id in image_citation_ids
+                for citation_id in provided_image_citation_ids
             ],
         )
 
-        complete_response["text_citations"] = text_citation_ids
-        complete_response["image_citations"] = image_citation_ids
+        complete_response["parsed_citations"] = {
+            "text": canonical_extracted_text_ids,
+            "image": canonical_extracted_image_ids,
+        }
 
         await self._send_processing_step_message(
             request_id,
@@ -265,17 +285,34 @@ class RagBase(ABC):
             citations.get("image_citations", []),
         )
 
+    def _normalize_citation_brackets(self, text: str) -> str:
+        if not text:
+            return text
+
+        def _expand(match: re.Match) -> str:
+            bracket_content = match.group(1)
+            citation_ids = self._CITATION_ID_PATTERN.findall(bracket_content)
+            if not citation_ids:
+                return match.group(0)
+            if len(citation_ids) == 1 and bracket_content.strip() == citation_ids[0]:
+                return match.group(0)
+            return "".join(f"[{citation_id}]" for citation_id in citation_ids)
+
+        return self._CITATION_BLOCK_PATTERN.sub(_expand, text)
+
     def _extract_citation_ids_from_answer(self, answer: str) -> List[str]:
         if not answer:
             return []
 
-        matches = self._CITATION_PATTERN.findall(answer)
+        matches = self._CITATION_BLOCK_PATTERN.findall(answer)
         citations = []
         seen = set()
-        for citation_id in matches:
-            if citation_id and citation_id not in seen:
-                citations.append(citation_id)
-                seen.add(citation_id)
+        for bracket_content in matches:
+            citation_ids = self._CITATION_ID_PATTERN.findall(bracket_content)
+            for citation_id in citation_ids:
+                if citation_id and citation_id not in seen:
+                    citations.append(citation_id)
+                    seen.add(citation_id)
         return citations
 
     def _split_citations_by_type(
@@ -345,29 +382,49 @@ class RagBase(ABC):
         if not buffer:
             return None
 
-        boundary_index: Optional[int] = None
-        boundary_delimiter: Optional[str] = None
+        search_start = 0
 
-        for delimiter in cls._STREAM_DELIMITERS:
-            idx = buffer.find(delimiter)
-            if idx == -1:
-                continue
+        while search_start < len(buffer):
+            boundary_index: Optional[int] = None
+            boundary_delimiter: Optional[str] = None
 
-            if (
-                boundary_index is None
-                or idx < boundary_index
-                or (idx == boundary_index and len(delimiter) > len(boundary_delimiter or ""))
-            ):
-                boundary_index = idx
-                boundary_delimiter = delimiter
+            for delimiter in cls._STREAM_DELIMITERS:
+                idx = buffer.find(delimiter, search_start)
+                if idx == -1:
+                    continue
 
-                if boundary_index == 0:
-                    break
+                if (
+                    boundary_index is None
+                    or idx < boundary_index
+                    or (
+                        idx == boundary_index
+                        and len(delimiter) > len(boundary_delimiter or "")
+                    )
+                ):
+                    boundary_index = idx
+                    boundary_delimiter = delimiter
 
-        if boundary_index is None or boundary_delimiter is None:
-            return None
+                    if boundary_index == search_start:
+                        break
 
-        return boundary_index, boundary_delimiter
+            if boundary_index is None or boundary_delimiter is None:
+                return None
+
+            chunk_text = buffer[:boundary_index].strip()
+            if cls._count_words(chunk_text) > cls._STREAM_MIN_WORDS:
+                return boundary_index, boundary_delimiter
+
+            # Skip this delimiter and look for a later boundary so we can emit a
+            # chunk with more context.
+            search_start = boundary_index + len(boundary_delimiter)
+
+        return None
+
+    @staticmethod
+    def _count_words(text: str) -> int:
+        if not text:
+            return 0
+        return len(text.split())
 
     @abstractmethod
     async def extract_citations(
@@ -496,8 +553,12 @@ class RagBase(ABC):
         except Exception as e:
             logger.error(f"Error sending message: {e}")
 
-    async def _send_end(self, response):
-        await self._send_message(response, MessageType.END.value, {})
+    async def _send_end(self, request_id: str, response):
+        await self._send_message(
+            response,
+            MessageType.END.value,
+            {"request_id": request_id},
+        )
 
     def attach_to_app(self, app, path):
         """Attaches the handler to the web app."""

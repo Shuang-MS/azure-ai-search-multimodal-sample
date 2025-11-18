@@ -91,3 +91,4 @@ output aiservicesTarget string = 'https://${aiServicesName}.cognitiveservices.az
 output openAiTarget string = openAi.properties.endpoint
 output openAIModelName string = oaimodelName
 output oaiDeploymentName string = oaiDeploymentName
+output aiservicesKey string = aiServices.listKeys().key1

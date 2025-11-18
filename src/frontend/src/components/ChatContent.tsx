@@ -113,7 +113,8 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
     const renderWithCitations = (
         children: React.ReactNode,
         textCitationMap: Map<string, Citation>,
-        imageCitationMap: Map<string, Citation>
+        imageCitationMap: Map<string, Citation>,
+        renderedInlineImageIds: Set<string>
     ) => {
         return React.Children.map(children, child => {
             if (typeof child === "string") {
@@ -124,8 +125,14 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
 
                     const citationId = part;
                     if (imageCitationMap.has(citationId)) {
-                        const citation = imageCitationMap.get(citationId);
-                        return citation ? inlineImage(`${citationId}-${index}`, citation) : citationHit(`${citationId}-${index}`, citationId);
+                        if (!renderedInlineImageIds.has(citationId)) {
+                            const citation = imageCitationMap.get(citationId);
+                            if (citation) {
+                                renderedInlineImageIds.add(citationId);
+                                return inlineImage(`${citationId}-${index}`, citation);
+                            }
+                        }
+                        return citationHit(`${citationId}-${index}`, citationId);
                     }
                     if (textCitationMap.has(citationId)) {
                         return citationHit(`${citationId}-${index}`, citationId);
@@ -160,6 +167,7 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                 const hasCitations = messageHasCitations(message);
                                 const textCitationMap = buildCitationMap(message.textCitations || []);
                                 const imageCitationMap = buildCitationMap(message.imageCitations || []);
+                                const renderedInlineImageIds = new Set<string>();
 
                                 if (message.type === ThreadType.Answer) {
                                     messageToBeCopied[message.request_id] = message.answerPartial?.answer || "";
@@ -192,10 +200,24 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                                 <ReactMarkdown
                                                     components={{
                                                         p: ({ children }) => (
-                                                            <p>{renderWithCitations(children, textCitationMap, imageCitationMap)}</p>
+                                                            <p>
+                                                                {renderWithCitations(
+                                                                    children,
+                                                                    textCitationMap,
+                                                                    imageCitationMap,
+                                                                    renderedInlineImageIds
+                                                                )}
+                                                            </p>
                                                         ),
                                                         li: ({ children }) => (
-                                                            <li>{renderWithCitations(children, textCitationMap, imageCitationMap)}</li>
+                                                            <li>
+                                                                {renderWithCitations(
+                                                                    children,
+                                                                    textCitationMap,
+                                                                    imageCitationMap,
+                                                                    renderedInlineImageIds
+                                                                )}
+                                                            </li>
                                                         )
                                                     }}
                                                     remarkPlugins={[remarkGfm]}
