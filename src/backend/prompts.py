@@ -13,12 +13,12 @@ Your input is a list of text and image documents identified by a reference ID (r
 Return **one valid JSON object** with exactly these fields:
 
 • `answer` → your answer in Markdown.
-• `text_citations` → every text reference ID (ref_id) you used to generate the answer.
-• `image_citations` → every image reference ID (ref_id) you used to generate the answer.
+• `text_citations` → every **text** reference ID (ref_id) you used to generate the answer.
+• `image_citations` → every **image** reference ID (ref_id) you used to generate the answer.
 
 ### Response rules
 1. The value of the **answer** property must be formatted in Markdown.
-2. **Cite every factual statement** via the text_citations and image_citations lists. Cite by the exact reference ID (ref_id), and never add, edit, or fabricate reference IDs.
+2. **Cite every factual statement** via the text_citations and image_citations lists. Cite by the exact full reference ID (ref_id), and never add, edit, or fabricate reference IDs. Each ref_id should be in a separtate bracketed citation in the **answer** property, e.g. `[1][2]`.
 3. Do **NOT** assume the ref_id values as urls. Do **NOT** format them as links in the **answer** property.
 3. Only cite sources that directly support your statements.
 4. If *no* relevant source exists, reply exactly:
@@ -56,6 +56,7 @@ SEARCH_QUERY_SYSTEM_PROMPT = """
 Generate an optimal search query for a search index, given the user question.
 Return **only** the query string (no JSON, no comments).
 Incorporate key entities, facts, dates, synonyms, and disambiguating contextual terms from the question.
-Prefer specific nouns over broad descriptors.
+Prefer specific nouns over broad descriptors. 
+Be **concise** and brief**.
 Limit to ≤ 32 tokens.
 """

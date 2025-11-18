@@ -1,7 +1,8 @@
 import logging
 import json
 import time
-from typing import List
+import re
+from typing import Dict, List, Tuple, Optional
 import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -31,6 +32,11 @@ class MessageType(Enum):
 
 
 class RagBase(ABC):
+    _CITATION_PATTERN = re.compile(
+        r"\[((?:[^\]]+_(?:text_sections|normalized_images)_\d+)|(?:[A-Za-z0-9]{12}(?:_[^\]]+)?))\]"
+    )
+    _STREAM_DELIMITERS = [".\n", ", ", ". ", "; ", "\n", "[", "]"]
+
     def __init__(
         self,
         openai_client: AsyncOpenAI,
@@ -105,15 +111,54 @@ class RagBase(ABC):
                 model=self.chatcompletions_model_name,
                 response_model=AnswerFormat,
                 messages=messages,
+                temperature=0.0,
+                seed=42,
             )
             msg_id = str(uuid.uuid4())
+            previous_answer = ""
+            emitted_answer = ""
+            line_buffer = ""
 
             async for stream_response in chat_stream_response:
                 if stream_response.answer is not None:
-                    await self._send_answer_message(
-                        request_id, response, msg_id, stream_response.answer
-                    )
+                    current_answer = stream_response.answer or ""
+                    new_chunk = current_answer[len(previous_answer) :]
+                    previous_answer = current_answer
+
+                    if not new_chunk:
+                        continue
+
+                    line_buffer += new_chunk
+
+                    # Emit updates when we hit punctuation/newline boundaries,
+                    # so the UI receives text in natural segments.
+                    while True:
+                        boundary = self._find_stream_boundary(line_buffer)
+                        if boundary is None:
+                            break
+
+                        boundary_index, delimiter = boundary
+                        end_index = boundary_index + len(delimiter)
+                        completed_segment = line_buffer[:end_index]
+                        line_buffer = line_buffer[end_index:]
+                        emitted_answer += completed_segment
+                        await self._send_answer_message(
+                            request_id,
+                            response,
+                            msg_id,
+                            emitted_answer,
+                        )
                     complete_response = stream_response.model_dump()
+
+            # Flush any remaining partial line once the stream ends so nothing is lost.
+            if line_buffer:
+                emitted_answer += line_buffer
+                await self._send_answer_message(
+                    request_id,
+                    response,
+                    msg_id,
+                    emitted_answer,
+                )
             if len(complete_response.keys()) == 0:
                 raise ValueError("No response received from chat completion stream.")
 
@@ -136,7 +181,47 @@ class RagBase(ABC):
                 complete_response = chat_completion.model_dump()
             else:
                 raise ValueError("No response received from chat completion stream.")
-            
+
+        answer_text = complete_response.get("answer", "")
+        text_citation_ids = complete_response.get("text_citations") or []
+        image_citation_ids = complete_response.get("image_citations") or []
+
+        extracted_citation_ids = self._extract_citation_ids_from_answer(answer_text)
+        (
+            extracted_text_ids,
+            extracted_image_ids,
+            citation_aliases,
+        ) = self._split_citations_by_type(
+            extracted_citation_ids, grounding_results["references"]
+        )
+
+        canonical_extracted_text_ids = [
+            citation_aliases.get(citation_id, citation_id)
+            for citation_id in extracted_text_ids
+        ]
+        canonical_extracted_image_ids = [
+            citation_aliases.get(citation_id, citation_id)
+            for citation_id in extracted_image_ids
+        ]
+
+        text_citation_ids = self._merge_citation_lists(
+            canonical_extracted_text_ids,
+            [
+                citation_aliases.get(citation_id, citation_id)
+                for citation_id in text_citation_ids
+            ],
+        )
+        image_citation_ids = self._merge_citation_lists(
+            canonical_extracted_image_ids,
+            [
+                citation_aliases.get(citation_id, citation_id)
+                for citation_id in image_citation_ids
+            ],
+        )
+
+        complete_response["text_citations"] = text_citation_ids
+        complete_response["image_citations"] = image_citation_ids
+
         await self._send_processing_step_message(
             request_id,
             response,
@@ -148,8 +233,9 @@ class RagBase(ABC):
             response,
             grounding_retriever,
             grounding_results["references"],
-            complete_response["text_citations"] or [],
-            complete_response["image_citations"] or [],
+            text_citation_ids,
+            image_citation_ids,
+            citation_aliases,
         )
 
     async def _extract_and_send_citations(
@@ -160,6 +246,7 @@ class RagBase(ABC):
         grounding_results: List[GroundingResult],
         text_citation_ids: list,
         image_citation_ids: list,
+        citation_aliases: Optional[Dict[str, str]],
     ):
         """Extracts and sends citations from search results."""
         citations = await self.extract_citations(
@@ -167,6 +254,7 @@ class RagBase(ABC):
             grounding_results,
             text_citation_ids,
             image_citation_ids,
+            citation_aliases,
         )
 
         await self._send_citation_message(
@@ -177,6 +265,110 @@ class RagBase(ABC):
             citations.get("image_citations", []),
         )
 
+    def _extract_citation_ids_from_answer(self, answer: str) -> List[str]:
+        if not answer:
+            return []
+
+        matches = self._CITATION_PATTERN.findall(answer)
+        citations = []
+        seen = set()
+        for citation_id in matches:
+            if citation_id and citation_id not in seen:
+                citations.append(citation_id)
+                seen.add(citation_id)
+        return citations
+
+    def _split_citations_by_type(
+        self,
+        citation_ids: List[str],
+        references: List[GroundingResult],
+    ) -> Tuple[List[str], List[str], Dict[str, str]]:
+        if not citation_ids:
+            return [], [], {}
+
+        reference_lookup: Dict[str, GroundingResult] = {
+            str(ref["ref_id"]): ref for ref in references or [] if ref.get("ref_id")
+        }
+        text_ids: List[str] = []
+        image_ids: List[str] = []
+        text_seen = set()
+        image_seen = set()
+        alias_lookup: Dict[str, str] = {}
+
+        for citation_id in citation_ids:
+            if not citation_id:
+                continue
+
+            alias_lookup.setdefault(citation_id, citation_id)
+
+            matched_id, reference = GroundingRetriever._get_reference_with_fuzzy_id(
+                citation_id, reference_lookup
+            )
+            if matched_id:
+                alias_lookup[citation_id] = matched_id
+            content_type = (reference or {}).get("content_type")
+
+            if not content_type:
+                normalized_id = str(citation_id).lower()
+                if "normalized_images" in normalized_id:
+                    # Heuristic fallback for cases where the ref id drifts (e.g. due to casing),
+                    # which still uniquely identifies image chunks.
+                    content_type = "image"
+
+            if content_type == "image":
+                if citation_id not in image_seen:
+                    image_ids.append(citation_id)
+                    image_seen.add(citation_id)
+            else:
+                if citation_id not in text_seen:
+                    text_ids.append(citation_id)
+                    text_seen.add(citation_id)
+
+        return text_ids, image_ids, alias_lookup
+
+    @staticmethod
+    def _merge_citation_lists(primary: List[str], secondary: List[str]) -> List[str]:
+        merged: List[str] = []
+        seen = set()
+
+        for citation_id in primary + secondary:
+            if citation_id and citation_id not in seen:
+                merged.append(citation_id)
+                seen.add(citation_id)
+
+        return merged
+
+    @classmethod
+    def _find_stream_boundary(
+        cls, buffer: str
+    ) -> Optional[Tuple[int, str]]:
+        if not buffer:
+            return None
+
+        boundary_index: Optional[int] = None
+        boundary_delimiter: Optional[str] = None
+
+        for delimiter in cls._STREAM_DELIMITERS:
+            idx = buffer.find(delimiter)
+            if idx == -1:
+                continue
+
+            if (
+                boundary_index is None
+                or idx < boundary_index
+                or (idx == boundary_index and len(delimiter) > len(boundary_delimiter or ""))
+            ):
+                boundary_index = idx
+                boundary_delimiter = delimiter
+
+                if boundary_index == 0:
+                    break
+
+        if boundary_index is None or boundary_delimiter is None:
+            return None
+
+        return boundary_index, boundary_delimiter
+
     @abstractmethod
     async def extract_citations(
         self,
@@ -184,6 +376,7 @@ class RagBase(ABC):
         grounding_results: List[GroundingResult],
         text_citation_ids: list,
         image_citation_ids: list,
+        citation_aliases: Optional[Dict[str, str]] = None,
     ) -> dict:
         pass
 

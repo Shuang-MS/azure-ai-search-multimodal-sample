@@ -35,7 +35,16 @@ export default function useChat(config: SearchConfig) {
                 }));
 
             setThread(prevThread => {
-                const newThread = [...prevThread, { request_id, type: ThreadType.Message, message: query, role: RoleType.User }];
+                const newThread = [
+                    ...prevThread,
+                    {
+                        request_id,
+                        type: ThreadType.Message,
+                        message: query,
+                        role: RoleType.User,
+                        timestamp: Date.now()
+                    }
+                ];
                 return newThread;
             });
 
@@ -58,18 +67,69 @@ export default function useChat(config: SearchConfig) {
                         setIsLoading(false);
                     } else {
                         const data = JSON.parse(message.data);
-                        data.type = message.event;
 
-                        setThread(prevThread => {
-                            const index = prevThread.findIndex(msg => msg.message_id === data.message_id);
-                            const newThread = index !== -1 ? [...prevThread] : [...prevThread, data];
-                            if (index !== -1) newThread[index] = data;
+                        if (message.event === ThreadType.Citation) {
+                            setThread(prevThread => {
+                                const newThread = [...prevThread];
+                                const answerIndex = newThread.findIndex(
+                                    msg =>
+                                        msg.request_id === data.request_id &&
+                                        msg.type === ThreadType.Answer
+                                );
 
-                            newThread.sort((a, b) => new Date(a.request_id).getTime() - new Date(b.request_id).getTime());
-                            refreshChats();
+                                if (answerIndex !== -1) {
+                                    newThread[answerIndex] = {
+                                        ...newThread[answerIndex],
+                                        textCitations: data.textCitations || [],
+                                        imageCitations: data.imageCitations || [],
+                                    };
+                                } else {
+                                    newThread.push({ ...data, type: ThreadType.Citation });
+                                }
 
-                            return newThread;
-                        });
+                                newThread.sort(
+                                    (a, b) =>
+                                        new Date(a.request_id).getTime() -
+                                        new Date(b.request_id).getTime()
+                                );
+                                refreshChats();
+                                return newThread;
+                            });
+                        } else {
+                            data.type = message.event;
+
+                            setThread(prevThread => {
+                                const index = prevThread.findIndex(
+                                    msg => msg.message_id === data.message_id
+                                );
+                                const shouldTimestampAssistant =
+                                    data.role === RoleType.Assistant && data.type === ThreadType.Answer;
+                                const existingTimestamp = index !== -1 ? prevThread[index].timestamp : undefined;
+                                const timestamp =
+                                    existingTimestamp ??
+                                    data.timestamp ??
+                                    (shouldTimestampAssistant ? Date.now() : undefined);
+                                const updatedMessage = {
+                                    ...data,
+                                    timestamp
+                                };
+                                const newThread = [...prevThread];
+                                if (index !== -1) {
+                                    newThread[index] = updatedMessage;
+                                } else {
+                                    newThread.push(updatedMessage);
+                                }
+
+                                newThread.sort(
+                                    (a, b) =>
+                                        new Date(a.request_id).getTime() -
+                                        new Date(b.request_id).getTime()
+                                );
+                                refreshChats();
+
+                                return newThread;
+                            });
+                        }
                     }
                 },
                 err => {

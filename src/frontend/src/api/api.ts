@@ -27,13 +27,4 @@ const listIndexes = async () => {
     return await response.json();
 };
 
-const getCitationDocument = async (fileName: string) => {
-    const response = await fetch(`/get_citation_doc`, {
-        method: "POST",
-        body: JSON.stringify({ fileName })
-    });
-
-    return await response.json();
-};
-
-export { sendChatApi, listIndexes, getCitationDocument };
+export { sendChatApi, listIndexes };

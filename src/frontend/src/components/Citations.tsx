@@ -1,10 +1,8 @@
 import React from "react";
 
-import { Caption1Strong, InteractionTag, InteractionTagPrimary } from "@fluentui/react-components";
-import { ImageCopy24Filled, Text12Filled } from "@fluentui/react-icons";
+import { Button, Caption1Strong } from "@fluentui/react-components";
 
 import { Citation } from "../api/models";
-import CitationViewer from "./CitationViewer";
 import "./Citations.css";
 
 interface CitationsProps {
@@ -14,70 +12,54 @@ interface CitationsProps {
 }
 
 const Citations: React.FC<CitationsProps> = ({ imageCitations, textCitations, highlightedCitation }) => {
-    const [citationsView, setCitationsView] = React.useState(false);
-    const [selectedCitation, setSelectedCitation] = React.useState<Citation>();
+    const [expanded, setExpanded] = React.useState(false);
+    const totalCitations = textCitations.length + imageCitations.length;
 
-    const truncateText = (maxLength: number, text?: string) => {
+    const truncateText = (text?: string, maxLength = 220) => {
         if (!text) return "";
-        if (text.length <= maxLength) {
-            return text;
-        }
-        return text.substring(0, maxLength) + "...";
+        return text.length > maxLength ? `${text.substring(0, maxLength)}…` : text;
     };
 
-    return (
-        <>
-            <div>
-                {!!(textCitations.length || imageCitations.length) && (
-                    <>
-                        <Caption1Strong className="citations-title" block>
-                            Citations
-                        </Caption1Strong>
-                        <div className="citations">
-                            {!!textCitations.length &&
-                                textCitations.map((citation, index) => (
-                                    <InteractionTag
-                                        className="citation-interaction"
-                                        key={index}
-                                        appearance={highlightedCitation === `${citation.content_id}` ? "brand" : "filled"}
-                                    >
-                                        <InteractionTagPrimary
-                                            secondaryText={`Page ${citation.locationMetadata.pageNumber}`}
-                                            onClick={() => {
-                                                setCitationsView(true);
-                                                setSelectedCitation(citation);
-                                            }}
-                                            icon={<Text12Filled />}
-                                        >
-                                            {truncateText(40, citation.title)}
-                                        </InteractionTagPrimary>
-                                    </InteractionTag>
-                                ))}
-                            {!!imageCitations.length &&
-                                imageCitations.map((citation, index) => (
-                                    <InteractionTag
-                                        key={index}
-                                        className="citation-interaction"
-                                        appearance={highlightedCitation === `${citation.content_id}` ? "brand" : "filled"}
-                                    >
-                                        <InteractionTagPrimary
-                                            secondaryText={`Page ${citation.locationMetadata.pageNumber}`}
-                                            onClick={() => {
-                                                setCitationsView(true);
-                                                setSelectedCitation(citation);
-                                            }}
-                                            icon={<ImageCopy24Filled className="citation-image-icon" />}
-                                        >
-                                            {truncateText(40, citation.title)}
-                                        </InteractionTagPrimary>
-                                    </InteractionTag>
-                                ))}
-                        </div>
-                    </>
-                )}
+    const renderCitationRow = (citation: Citation, typeLabel: string, index: number) => (
+        <div
+            key={`${citation.content_id}-${index}`}
+            className={`citation-row ${highlightedCitation === `${citation.content_id}` ? "highlighted" : ""}`}
+        >
+            <div className="citation-row-header">
+                <span className="citation-type">{typeLabel}</span>
+                <span className="citation-page">Page {citation.locationMetadata.pageNumber}</span>
             </div>
-            {selectedCitation && <CitationViewer show={citationsView} toggle={() => setCitationsView(false)} citation={selectedCitation} />}
-        </>
+            <div className="citation-document" title={citation.title || citation.docId}>
+                {citation.title || citation.docId}
+            </div>
+            <div className="citation-snippet">{truncateText(citation.text || "Chunk snippet unavailable")}</div>
+        </div>
+    );
+
+    if (!totalCitations) {
+        return null;
+    }
+
+    return (
+        <div className="citations-panel">
+            <div className="citations-header">
+                <Caption1Strong>Citations ({totalCitations})</Caption1Strong>
+                <Button
+                    appearance="subtle"
+                    size="small"
+                    onClick={() => setExpanded(prev => !prev)}
+                    className="citations-toggle"
+                >
+                    {expanded ? "Hide" : "Show"}
+                </Button>
+            </div>
+            {expanded && (
+                <div className="citations-list">
+                    {textCitations.map((citation, index) => renderCitationRow(citation, "Text", index))}
+                    {imageCitations.map((citation, index) => renderCitationRow(citation, "Image", index))}
+                </div>
+            )}
+        </div>
     );
 };
 

@@ -10,3 +10,4 @@ data.json
 index_payload.json
 data/
 .vscode
+src/frontend/src/content/samples.json

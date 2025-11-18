@@ -2,7 +2,7 @@ import logging
 from aiohttp import web
 from azure.storage.blob import ContainerClient
 from openai import AsyncOpenAI
-from typing import List
+from typing import Dict, List, Optional, Set
 from grounding_retriever import GroundingRetriever
 from knowledge_agent import KnowledgeAgentGrounding
 from helpers import get_blob_as_base64
@@ -152,13 +152,18 @@ class MultimodalRag(RagBase):
                         )
                         blob_client = ks_container_client.get_blob_client(content_blob)
                         image_base64 = await get_blob_as_base64(blob_client)
+                    if image_base64 is None:
+                        raise ValueError(
+                            f"Unable to load blob for image reference {doc['ref_id']}"
+                        )
+
+                    image_data_url = f"data:image/png;base64,{image_base64}"
+                    doc["image_data_url"] = image_data_url
 
                     collected_documents.append(
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_base64}"
-                            },
+                            "image_url": {"url": image_data_url},
                         }
                     )
 
@@ -184,13 +189,49 @@ class MultimodalRag(RagBase):
         grounding_results: List[GroundingResult],
         text_citation_ids: list,
         image_citation_ids: list,
+        citation_aliases: Optional[Dict[str, str]] = None,
     ) -> dict:
         """Extracts both text and image citations from search results."""
+        text_citations = await grounding_retriever._get_text_citations(
+            text_citation_ids, grounding_results
+        )
+        image_citations = await grounding_retriever._get_image_citations(
+            image_citation_ids, grounding_results
+        )
+
+        alias_groups: Dict[str, Set[str]] = {}
+        if citation_aliases:
+            for alias, canonical in citation_aliases.items():
+                canonical_id = str(canonical or alias or "")
+                if not canonical_id:
+                    continue
+                alias_set = alias_groups.setdefault(canonical_id, set())
+                alias_set.add(canonical_id)
+                alias_set.add(str(alias))
+
+        def _apply_aliases(citations: List[dict]):
+            for citation in citations:
+                ref_id = citation.get("content_id")
+                if not ref_id:
+                    continue
+                aliases = alias_groups.get(str(ref_id))
+                if aliases:
+                    citation["contentAliases"] = sorted(aliases)
+
+        image_data_lookup = {
+            ref["ref_id"]: ref.get("image_data_url")
+            for ref in grounding_results
+            if ref.get("image_data_url")
+        }
+        for citation in image_citations:
+            ref_id = citation.get("content_id")
+            if ref_id in image_data_lookup:
+                citation["imageDataUrl"] = image_data_lookup[ref_id]
+
+        _apply_aliases(text_citations)
+        _apply_aliases(image_citations)
+
         return {
-            "text_citations": await grounding_retriever._get_text_citations(
-                text_citation_ids, grounding_results
-            ),
-            "image_citations": await grounding_retriever._get_image_citations(
-                image_citation_ids, grounding_results
-            ),
+            "text_citations": text_citations,
+            "image_citations": image_citations,
         }

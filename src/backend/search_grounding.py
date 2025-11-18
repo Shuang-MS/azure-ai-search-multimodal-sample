@@ -7,6 +7,7 @@ from prompts import SEARCH_QUERY_SYSTEM_PROMPT
 from models import Message, SearchConfig, GroundingResults
 from azure.search.documents.aio import SearchClient
 from grounding_retriever import GroundingRetriever
+import time
 
 logger = logging.getLogger("groundingapi")
 
@@ -33,11 +34,11 @@ class SearchGroundingRetriever(GroundingRetriever):
     ) -> GroundingResults:
 
         query = await self._generate_search_query(user_message, chat_thread)
-        print(f"======Generated search query: \n{query}")
 
         try:
             payload = self.data_model.create_search_payload(query, options)
 
+            start = time.perf_counter()
             search_results = await self.search_client.search(
                 search_text=payload["search"],
                 top=payload["top"],
@@ -45,6 +46,7 @@ class SearchGroundingRetriever(GroundingRetriever):
                 query_type=payload.get("query_type", "simple"),
                 select=payload["select"],
             )
+            logger.info(f"Azure AI Search request took {time.perf_counter() - start:.2f} seconds")
         except Exception as e:
             raise Exception(f"Azure AI Search request failed: {str(e)}")
 
@@ -76,7 +78,7 @@ class SearchGroundingRetriever(GroundingRetriever):
             prompt_parts.append(f"Current user question:\n{user_message}")
 
             prompt_content = "\n\n".join(prompt_parts)
-
+            start = time.perf_counter()
             response = await self.openai_client.chat.completions.create(
                 model=self.chatcompletions_model_name,
                 messages=[
@@ -84,6 +86,8 @@ class SearchGroundingRetriever(GroundingRetriever):
                     {"role": "user", "content": prompt_content},
                 ],
             )
+
+            logger.info(f"Search query generation took {time.perf_counter() - start:.2f} seconds")
             return response.choices[0].message.content
         except Exception as e:
             raise Exception(
@@ -116,7 +120,7 @@ class SearchGroundingRetriever(GroundingRetriever):
         return user_messages[-max_messages:]
 
     _citation_pattern = re.compile(
-        r"\[(?:[^\]]+_(?:text_sections|normalized_images)_\d+|[a-z0-9]{12}_)\]"
+        r"\[((?:[^\]]+_(?:text_sections|normalized_images)_\d+)|([a-z0-9]{12}_))\]"
     )
 
     def _clean_text(self, text: str) -> str:
@@ -149,12 +153,32 @@ class SearchGroundingRetriever(GroundingRetriever):
         }
         extracted_citations = []
         missing_ref_ids = []
+        fuzzy_matched_ids = []
+
         for ref_id in ref_ids:
-            if ref_id in references:
-                ref = references[ref_id]
-                extracted_citations.append(self.data_model.extract_citation(ref))
+            matched_id, reference = self._get_reference_with_fuzzy_id(
+                ref_id, references
+            )
+            if reference:
+                citation = self.data_model.extract_citation(reference)
+                # When we fuzzy-match, force the canonical id from the grounding
+                # results so downstream consumers (e.g. inline images) resolve
+                # against the actual reference rather than the LLM's raw token.
+                if matched_id:
+                    citation["content_id"] = matched_id
+                extracted_citations.append(citation)
+                if matched_id and matched_id != ref_id:
+                    fuzzy_matched_ids.append((ref_id, matched_id))
             else:
                 missing_ref_ids.append(ref_id)
+
+        if fuzzy_matched_ids:
+            logger.info(
+                "Resolved %d citation ids via fuzzy matching: %s",
+                len(fuzzy_matched_ids),
+                fuzzy_matched_ids,
+            )
+
         if missing_ref_ids:
             logger.warning(
                 "Dropping %d citation ids not found in grounding results: %s",

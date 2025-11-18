@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 
 import { Button, Tooltip } from "@fluentui/react-components";
 
-import { ProcessingStepsMessage, RoleType, Thread, ThreadType } from "../api/models";
+import { Citation, ProcessingStepsMessage, RoleType, Thread, ThreadType } from "../api/models";
 import "./ChatContent.css";
 import Citations from "./Citations";
 import ProcessingSteps from "./ProcessingSteps";
@@ -36,6 +36,25 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
         }
     }, [thread]);
 
+    const buildCitationMap = (citations: Citation[]) => {
+        const entries: [string, Citation][] = [];
+        citations.forEach(citation => {
+            const aliasSet = new Set<string>();
+            if (citation.content_id) {
+                aliasSet.add(citation.content_id);
+            }
+            (citation.contentAliases || []).forEach(alias => {
+                if (alias) {
+                    aliasSet.add(alias);
+                }
+            });
+            aliasSet.forEach(alias => {
+                entries.push([alias, citation]);
+            });
+        });
+        return new Map(entries);
+    };
+
     const messagesGroupedByRequestId = Object.values(
         thread.reduce((acc: { [key: string]: Thread[] }, message: Thread) => {
             if (!acc[message.request_id]) {
@@ -63,30 +82,66 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
         });
     }, [thread]);
 
-    // Recognize citations within square brackets, e.g. ["anystring"]
-    const citationRegex = /\[((?:[^\]]+_(?:text_sections|normalized_images)_\d+)|(?:[a-z0-9]{12}_))\]/g;
-    const citationHit = (index: number, docId: string) => {
-        return (
-            <sup
-                key={index}
-                onMouseLeave={() => setHighlightedCitation(undefined)}
-                onMouseEnter={() => setHighlightedCitation(docId)}
-                className="citation-icon"
-            >
-                ◆
-            </sup>
-        );
-    };
+    const citationRegex = /\[((?:[^\]]+_(?:text_sections|normalized_images)_\d+)|(?:[A-Za-z0-9]{12}(?:_[^\]]+)?))\]/g;
 
-    const renderWithCitations = (children: React.ReactNode) => {
+    const citationHit = (key: string, docId: string) => (
+        <sup
+            key={key}
+            onMouseLeave={() => setHighlightedCitation(undefined)}
+            onMouseEnter={() => setHighlightedCitation(docId)}
+            className="citation-icon"
+        >
+            ◆
+        </sup>
+    );
+
+    const inlineImage = (key: string, citation: Citation) => (
+        <div><span
+            key={key}
+            className="inline-image-citation"
+            onMouseEnter={() => setHighlightedCitation(citation.content_id)}
+            onMouseLeave={() => setHighlightedCitation(undefined)}
+        >
+            {citation.imageDataUrl ? (
+                <img src={citation.imageDataUrl} alt={citation.title || citation.docId || citation.content_id} />
+            ) : (
+                <span className="inline-image-missing">Image unavailable</span>
+            )}
+        </span></div>
+    );
+
+    const renderWithCitations = (
+        children: React.ReactNode,
+        textCitationMap: Map<string, Citation>,
+        imageCitationMap: Map<string, Citation>
+    ) => {
         return React.Children.map(children, child => {
             if (typeof child === "string") {
-                return child
-                    .split(citationRegex)
-                    .map((part, index) => (index % 2 === 0 ? part : index % 2 === 1 ? citationHit(index, part) : null));
+                return child.split(citationRegex).map((part, index) => {
+                    if (index % 2 === 0) {
+                        return part;
+                    }
+
+                    const citationId = part;
+                    if (imageCitationMap.has(citationId)) {
+                        const citation = imageCitationMap.get(citationId);
+                        return citation ? inlineImage(`${citationId}-${index}`, citation) : citationHit(`${citationId}-${index}`, citationId);
+                    }
+                    if (textCitationMap.has(citationId)) {
+                        return citationHit(`${citationId}-${index}`, citationId);
+                    }
+                    return citationHit(`${citationId}-${index}`, citationId);
+                });
             }
             return child;
         });
+    };
+
+    const formatTimestamp = (timestamp?: number) => {
+        if (!timestamp) {
+            return "";
+        }
+        return new Date(timestamp).toLocaleString();
     };
 
     const getCurProcessingStep = (requestId: string): Record<string, ProcessingStepsMessage[]> => {
@@ -103,15 +158,30 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                         <div key={index} className="chat-message-group">
                             {group.map((message, msgIndex) => {
                                 const hasCitations = messageHasCitations(message);
+                                const textCitationMap = buildCitationMap(message.textCitations || []);
+                                const imageCitationMap = buildCitationMap(message.imageCitations || []);
 
                                 if (message.type === ThreadType.Answer) {
                                     messageToBeCopied[message.request_id] = message.answerPartial?.answer || "";
                                 }
 
                                 return (
-                                    <>
+                                    <React.Fragment key={msgIndex}>
+                                        {message.timestamp &&
+                                            (message.role === RoleType.User ||
+                                                (message.role === RoleType.Assistant && message.type === ThreadType.Answer)) && (
+                                                <div
+                                                    className={`chat-timestamp ${
+                                                        message.role === RoleType.User
+                                                            ? "chat-timestamp-user"
+                                                            : "chat-timestamp-assistant"
+                                                    }`}
+                                                >
+                                                    {message.role === RoleType.User ? "Submitted" : "Responded"} at{" "}
+                                                    {formatTimestamp(message.timestamp)}
+                                                </div>
+                                            )}
                                         <div
-                                            key={msgIndex}
                                             className={`chat-message ${message.role === RoleType.User ? "user-chat" : message.type === ThreadType.Info ? "info" : ""}`}
                                         >
                                             {message.type === ThreadType.Message && <a>{message.message}</a>}
@@ -121,8 +191,12 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                             {message.type === ThreadType.Answer && (
                                                 <ReactMarkdown
                                                     components={{
-                                                        p: ({ children }) => <p>{renderWithCitations(children)}</p>,
-                                                        li: ({ children }) => <li>{renderWithCitations(children)}</li>
+                                                        p: ({ children }) => (
+                                                            <p>{renderWithCitations(children, textCitationMap, imageCitationMap)}</p>
+                                                        ),
+                                                        li: ({ children }) => (
+                                                            <li>{renderWithCitations(children, textCitationMap, imageCitationMap)}</li>
+                                                        )
                                                     }}
                                                     remarkPlugins={[remarkGfm]}
                                                 >
@@ -135,7 +209,9 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                                 </div>
                                             )}
 
-                                            {(message.type === ThreadType.Error || message.type === ThreadType.Citation || hasCitations) && (
+                                            {(message.type === ThreadType.Error ||
+                                                message.type === ThreadType.Citation ||
+                                                message.type === ThreadType.Answer) && (
                                                 <>
                                                     <div className="chat-footer">
                                                         <Tooltip
@@ -183,7 +259,7 @@ const ChatContent: React.FC<Props> = ({ thread, processingStepMsg }) => {
                                                 </>
                                             )}
                                         </div>
-                                    </>
+                                    </React.Fragment>
                                 );
                             })}
                         </div>

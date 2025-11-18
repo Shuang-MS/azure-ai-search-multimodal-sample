@@ -31,6 +31,7 @@ export interface Thread {
     textCitations?: Citation[];
     imageCitations?: Citation[];
     knowledgeAgentMessage?: KnowledgeAgentMessage;
+    timestamp?: number;
 }
 
 export type Coordinates = { x: number; y: number };
@@ -42,6 +43,8 @@ export interface Citation {
     content_id: string;
     title: string;
     text?: string;
+    imageDataUrl?: string;
+    contentAliases?: string[];
     locationMetadata: {
         pageNumber: number;
         boundingPolygons: string;

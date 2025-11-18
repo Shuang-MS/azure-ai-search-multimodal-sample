@@ -21,7 +21,6 @@ from knowledge_agent import KnowledgeAgentGrounding
 from constants import USER_AGENT
 from multimodalrag import MultimodalRag
 from data_model import DocumentPerChunkDataModel
-from citation_file_handler import CitationFilesHandler
 
 
 logging.basicConfig(
@@ -108,9 +107,6 @@ async def create_app():
     artifacts_container_client = blob_service_client.get_container_client(
         os.environ["ARTIFACTS_STORAGE_CONTAINER"]
     )
-    samples_container_client = blob_service_client.get_container_client(
-        os.environ["SAMPLES_STORAGE_CONTAINER"]
-    )
 
     logging.info("Creating web application")
     app = web.Application(middlewares=[])
@@ -125,10 +121,6 @@ async def create_app():
     )
     mmrag.attach_to_app(app, "/chat")
 
-    citation_files_handler = CitationFilesHandler(
-        blob_service_client, samples_container_client
-    )
-
     logging.info("Adding routes to web application")
     current_directory = Path(__file__).parent
     app.add_routes(
@@ -137,7 +129,6 @@ async def create_app():
                 "/", lambda _: web.FileResponse(current_directory / "static/index.html")
             ),
             web.get("/list_indexes", lambda _: list_indexes(index_client)),
-            web.post("/get_citation_doc", citation_files_handler.handle),
         ]
     )
     app.router.add_static("/", path=current_directory / "static", name="static")

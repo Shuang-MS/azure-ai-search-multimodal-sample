@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import aiohttp
-from typing import List
+from typing import Any, Dict, List, Optional
 from data_model import DataModel
 from models import Message, GroundingResults, GroundingResult
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -112,13 +112,15 @@ class KnowledgeAgentGrounding(GroundingRetriever):
                 for content in ref.get("content", []):
                     content_text = json.loads(content.get("text", "{}"))
                     for reference in content_text:
-                        reference["ref_id"] = self._get_document_id(
+                        document_key = self._get_document_id(
                             reference["ref_id"], result
                         )
+                        reference_copy = dict(reference)
                         references.append(
                             {
                                 "ref_id": reference["ref_id"],
-                                "content": reference,
+                                "doc_key": document_key,
+                                "content": reference_copy,
                                 "content_type": "text",  # Knowledge agent currently only returns text content
                             }
                         )
@@ -133,15 +135,80 @@ class KnowledgeAgentGrounding(GroundingRetriever):
     async def _get_text_citations(
         self, ref_ids: List[str], grounding_results: GroundingResults
     ) -> List[dict]:
-        try:
-            citations = []
-            for ref_id in ref_ids:
-                document = await self.search_client.get_document(ref_id)
-                citations.append(self.data_model.extract_citation(document))
-            return citations
-        except Exception as e:
-            logger.error(f"Error creating text citations: {str(e)}")
-            raise
+        if not ref_ids:
+            return []
+
+        unique_ref_ids = list(dict.fromkeys(ref_ids))
+        references_lookup: Dict[str, GroundingResult] = {
+            reference["ref_id"]: reference for reference in grounding_results
+        }
+        fuzzy_matched_ids = []
+        matched_references: List[Optional[GroundingResult]] = []
+
+        for ref_id in unique_ref_ids:
+            matched_id, reference = self._get_reference_with_fuzzy_id(
+                ref_id, references_lookup
+            )
+            matched_references.append(reference)
+            if matched_id and matched_id != ref_id:
+                fuzzy_matched_ids.append((ref_id, matched_id))
+
+        async def fetch_document(doc_id: str):
+            try:
+                return await self.search_client.get_document(doc_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to fetch document %s for citation lookup: %s",
+                    doc_id,
+                    exc,
+                )
+                return exc
+
+        document_ids: List[str] = []
+        fetch_tasks = []
+        for ref_id, reference in zip(unique_ref_ids, matched_references):
+            document_id = ref_id
+            if reference:
+                document_id = (
+                    reference.get("doc_key")
+                    or reference.get("content", {}).get("doc_key")
+                    or ref_id
+                )
+            document_ids.append(document_id)
+            fetch_tasks.append(fetch_document(document_id))
+        documents = await asyncio.gather(*fetch_tasks)
+
+        citations: List[dict] = []
+        for ref_id, doc_id, document, reference in zip(
+            unique_ref_ids, document_ids, documents, matched_references
+        ):
+            citation = None
+            if not isinstance(document, Exception):
+                try:
+                    citation = self.data_model.extract_citation(document)
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to build citation from document %s (lookup id %s): %s",
+                        ref_id,
+                        doc_id,
+                        exc,
+                    )
+
+            if citation is None:
+                if reference:
+                    citation = self._citation_from_reference(reference)
+
+            if citation:
+                citations.append(citation)
+
+        if fuzzy_matched_ids:
+            logger.info(
+                "Resolved %d knowledge agent citation ids via fuzzy matching: %s",
+                len(fuzzy_matched_ids),
+                fuzzy_matched_ids,
+            )
+
+        return citations
 
     async def _get_image_citations(
         self, ref_ids: List[str], grounding_results: GroundingResults
@@ -165,3 +232,30 @@ class KnowledgeAgentGrounding(GroundingRetriever):
             if str(ref_dict["id"]) == str(ref_id):
                 return ref_dict["doc_key"]
         raise ValueError(f"Reference ID {ref_id} not found in response")
+
+    def _citation_from_reference(self, reference: GroundingResult) -> dict:
+        """Best-effort fallback when we cannot rehydrate a document from the index."""
+        content: Dict[str, Any] = reference.get("content", {}) or {}
+        location = content.get("locationMetadata") or content.get("location_metadata") or {}
+
+        return {
+            "docId": content.get("docId")
+            or content.get("document_id")
+            or content.get("text_document_id")
+            or reference.get("ref_id"),
+            "content_id": reference.get("ref_id"),
+            "title": content.get("title")
+            or content.get("document_title")
+            or "Knowledge Agent source",
+            "text": content.get("text")
+            or content.get("content")
+            or "Citation content unavailable.",
+            "locationMetadata": {
+                "pageNumber": location.get("pageNumber")
+                or location.get("page_number")
+                or 0,
+                "boundingPolygons": location.get("boundingPolygons")
+                or location.get("bounding_polygons")
+                or "",
+            },
+        }
