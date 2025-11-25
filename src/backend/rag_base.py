@@ -145,6 +145,9 @@ class RagBase(ABC):
                         completed_segment = line_buffer[:end_index]
                         line_buffer = line_buffer[end_index:]
                         emitted_answer += completed_segment
+                        normalized_completed_segment = (
+                            self._normalize_citation_brackets(completed_segment)
+                        )
                         normalized_emitted_answer = self._normalize_citation_brackets(
                             emitted_answer
                         )
@@ -153,12 +156,16 @@ class RagBase(ABC):
                             response,
                             msg_id,
                             normalized_emitted_answer,
+                            normalized_completed_segment,
                         )
                     complete_response = stream_response.model_dump()
 
             # Flush any remaining partial line once the stream ends so nothing is lost.
             if line_buffer:
                 emitted_answer += line_buffer
+                normalized_completed_segment = self._normalize_citation_brackets(
+                    line_buffer
+                )
                 normalized_emitted_answer = self._normalize_citation_brackets(
                     emitted_answer
                 )
@@ -167,6 +174,7 @@ class RagBase(ABC):
                     response,
                     msg_id,
                     normalized_emitted_answer,
+                    normalized_completed_segment,
                 )
             if len(complete_response.keys()) == 0:
                 raise ValueError("No response received from chat completion stream.")
@@ -188,7 +196,11 @@ class RagBase(ABC):
                     chat_completion.answer
                 )
                 await self._send_answer_message(
-                    request_id, response, msg_id, normalized_answer
+                    request_id,
+                    response,
+                    msg_id,
+                    normalized_answer,
+                    normalized_answer,
                 )
                 complete_response = chat_completion.model_dump()
                 complete_response["answer"] = normalized_answer
@@ -509,7 +521,13 @@ class RagBase(ABC):
         response: web.StreamResponse,
         message_id: str,
         content: str,
+        chunk: Optional[str] = None,
     ):
+        answer_payload = {
+            "answer": content,
+        }
+        if chunk is not None:
+            answer_payload["chunk"] = chunk
         await self._send_message(
             response,
             MessageType.ANSWER.value,
@@ -517,7 +535,7 @@ class RagBase(ABC):
                 "request_id": request_id,
                 "message_id": message_id,
                 "role": "assistant",
-                "answerPartial": {"answer": content},
+                "answerPartial": answer_payload,
             },
         )
 

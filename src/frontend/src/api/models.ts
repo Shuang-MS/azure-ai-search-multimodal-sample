@@ -25,7 +25,7 @@ export interface Thread {
     request_id: string;
     message_id?: string;
     type: ThreadType;
-    answerPartial?: { answer: string };
+    answerPartial?: { answer: string; chunk?: string };
     log_json?: string;
     role: RoleType;
     textCitations?: Citation[];

@@ -12,7 +12,7 @@ export default function useChat(config: SearchConfig) {
     const [chats, setChats] = useState<Record<string, Chat>>();
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [completedRequest, setCompletedRequest] = useState<{ requestId: string; answer: string }>();
-    const [streamingChunk, setStreamingChunk] = useState<{ requestId: string; chunk: string; chunkId: string }>();
+    const [streamingChunks, setStreamingChunks] = useState<{ requestId: string; chunk: string; chunkId: string }[]>([]);
     const activeRequestIdRef = useRef<string>();
     const answerCacheRef = useRef<Record<string, string>>({});
     const chunkCounterRef = useRef(0);
@@ -27,7 +27,7 @@ export default function useChat(config: SearchConfig) {
             const request_id = new Date().getTime().toString();
             activeRequestIdRef.current = request_id;
             setCompletedRequest(undefined);
-            setStreamingChunk(undefined);
+            setStreamingChunks([]);
 
             if (!chatId) setChatId(request_id);
 
@@ -171,19 +171,30 @@ export default function useChat(config: SearchConfig) {
                             ) {
                                 const previousAnswer = answerCacheRef.current[data.message_id] || "";
                                 const currentAnswer = data.answerPartial?.answer || "";
-                                if (currentAnswer.length >= previousAnswer.length) {
-                                    const delta = currentAnswer.slice(previousAnswer.length);
-                                    answerCacheRef.current[data.message_id] = currentAnswer;
-                                    if (delta.trim()) {
-                                        const chunkId = `${data.message_id}:${chunkCounterRef.current++}`;
-                                        setStreamingChunk({
-                                            requestId: data.request_id,
-                                            chunk: delta,
-                                            chunkId
-                                        });
+                                const providedChunk = data.answerPartial?.chunk;
+                                let chunkText: string | undefined = providedChunk;
+
+                                if (!chunkText) {
+                                    if (currentAnswer.length >= previousAnswer.length) {
+                                        const delta = currentAnswer.slice(previousAnswer.length);
+                                        if (delta.trim()) {
+                                            chunkText = delta;
+                                        }
                                     }
-                                } else {
-                                    answerCacheRef.current[data.message_id] = currentAnswer;
+                                }
+
+                                answerCacheRef.current[data.message_id] = currentAnswer;
+
+                                if (chunkText?.trim()) {
+                                    const chunkId = `${data.message_id}:${chunkCounterRef.current++}`;
+                                    setStreamingChunks(prev => [
+                                        ...prev,
+                                        {
+                                            requestId: data.request_id,
+                                            chunk: chunkText,
+                                            chunkId
+                                        }
+                                    ]);
                                 }
                             }
                         }
@@ -206,7 +217,7 @@ export default function useChat(config: SearchConfig) {
         setThread([]);
         threadRef.current = [];
         answerCacheRef.current = {};
-        setStreamingChunk(undefined);
+        setStreamingChunks([]);
         chunkCounterRef.current = 0;
     };
 
@@ -223,6 +234,6 @@ export default function useChat(config: SearchConfig) {
         handleQuery,
         onNewChat,
         completedRequest,
-        streamingChunk
+        streamingChunks
     };
 }

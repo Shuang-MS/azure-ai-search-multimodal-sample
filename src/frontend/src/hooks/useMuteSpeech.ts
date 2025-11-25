@@ -17,7 +17,7 @@ interface UseMuteSpeechOptions {
     enqueueSpeechChunk: (text: string) => Promise<void>;
     stopSpeaking: () => Promise<void>;
     completedRequest?: CompletedRequest;
-    streamingChunk?: StreamingChunk;
+    streamingChunks?: StreamingChunk[];
 }
 
 const CITATION_PATTERN_SOURCE =
@@ -45,14 +45,14 @@ export default function useMuteSpeech({
     enqueueSpeechChunk,
     stopSpeaking,
     completedRequest,
-    streamingChunk
+    streamingChunks
 }: UseMuteSpeechOptions) {
     const [muteMode, setMuteMode] = useState(false);
     const [lastNarratedRequestId, setLastNarratedRequestId] = useState<string>();
-    const lastChunkIdRef = useRef<string>();
     const lastStreamingRequestIdRef = useRef<string>();
     const streamingNarratedRequestsRef = useRef<Set<string>>(new Set());
     const streamingCitationBufferRef = useRef<string>("");
+    const processedChunkIdsRef = useRef<Set<string>>(new Set());
 
     const toggleMute = useCallback(() => {
         setMuteMode(prev => !prev);
@@ -66,37 +66,43 @@ export default function useMuteSpeech({
     }, [muteMode, stopSpeaking]);
 
     useEffect(() => {
-        if (!streamingChunk?.chunkId) {
-            return;
-        }
-        if (lastChunkIdRef.current === streamingChunk.chunkId) {
-            return;
-        }
-        lastChunkIdRef.current = streamingChunk.chunkId;
-
-        if (streamingChunk.requestId !== lastStreamingRequestIdRef.current) {
-            streamingCitationBufferRef.current = "";
-            lastStreamingRequestIdRef.current = streamingChunk.requestId;
-        }
-
-        streamingNarratedRequestsRef.current.add(streamingChunk.requestId);
-
-        if (!supportsSpeech || muteMode) {
+        if (!streamingChunks?.length) {
+            processedChunkIdsRef.current.clear();
             return;
         }
 
-        const cleanChunk = sanitizeStreamingChunk(streamingChunk.chunk, streamingCitationBufferRef);
-        if (!cleanChunk) {
-            return;
+        for (const chunk of streamingChunks) {
+            if (!chunk?.chunkId || processedChunkIdsRef.current.has(chunk.chunkId)) {
+                continue;
+            }
+
+            processedChunkIdsRef.current.add(chunk.chunkId);
+
+            if (chunk.requestId !== lastStreamingRequestIdRef.current) {
+                streamingCitationBufferRef.current = "";
+                lastStreamingRequestIdRef.current = chunk.requestId;
+            }
+
+            streamingNarratedRequestsRef.current.add(chunk.requestId);
+
+            if (!supportsSpeech || muteMode) {
+                continue;
+            }
+
+            const cleanChunk = sanitizeStreamingChunk(chunk.chunk, streamingCitationBufferRef);
+            if (!cleanChunk) {
+                continue;
+            }
+
+            console.info("Speech chunk queued for TTS", {
+                chunkId: chunk.chunkId,
+                queuedAt: new Date().toISOString(),
+                text: cleanChunk
+            });
+
+            void enqueueSpeechChunk(cleanChunk);
         }
-
-        console.info("Speech chunk queued for TTS", {
-            queuedAt: new Date().toISOString(),
-            text: cleanChunk
-        });
-
-        void enqueueSpeechChunk(cleanChunk);
-    }, [enqueueSpeechChunk, muteMode, streamingChunk, supportsSpeech]);
+    }, [enqueueSpeechChunk, muteMode, streamingChunks, supportsSpeech]);
 
     useEffect(() => {
         if (!completedRequest?.answer?.trim() || !completedRequest.requestId || !supportsSpeech) {

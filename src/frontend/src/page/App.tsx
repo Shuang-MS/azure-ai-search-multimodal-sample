@@ -17,7 +17,7 @@ import useMuteSpeech from "../hooks/useMuteSpeech";
 
 function App() {
     const { config, setConfig, indexes } = useConfig();
-    const { thread, processingStepsMessage, chats, isLoading, handleQuery, onNewChat, completedRequest, streamingChunk } = useChat(config);
+    const { thread, processingStepsMessage, chats, isLoading, handleQuery, onNewChat, completedRequest, streamingChunks } = useChat(config);
     const { darkMode, setDarkMode } = useTheme();
     const [newQ, setnewQ] = useState(false);
     const speech = useSpeech();
@@ -28,7 +28,7 @@ function App() {
         enqueueSpeechChunk,
         stopSpeaking,
         completedRequest,
-        streamingChunk
+        streamingChunks
     });
 
     const runQuery = (query: string) => {
