@@ -51,7 +51,7 @@ class DocumentPerChunkDataModel(DataModel):
                     "k": search_config["chunk_count"],
                 }
             ],
-            "select": "content_id, content_text, document_title, text_document_id, image_document_id, locationMetadata, content_path",
+            "select": "content_id, content_text, document_title, text_document_id, image_document_id, locationMetadata, content_path, category, models",
         }
 
         if search_config["use_semantic_ranker"]:

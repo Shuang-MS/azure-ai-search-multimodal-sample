@@ -47,6 +47,7 @@ from data_injestion.skills import (
     getAzureOpenAIEmbeddingSkillForVerbalizedImage,
     getChatCompletionSkill,
     getDocumentIntelligenceLayOutSkill,
+    getDocumentMetadataSkill,
     getShaperSkill,
 )
 from data_injestion.strategy import Strategy
@@ -58,26 +59,40 @@ class IndexerImgVerbalizationStrategy(Strategy):
     """
 
     def _buildSkills(self, request: ProcessRequest):
+        skills = [
+            getDocumentIntelligenceLayOutSkill(),
+            getChatCompletionSkill(
+                uri=request.chatCompletionEndpoint,
+                deploymentName=request.chatCompletionDeployment
+            ),
+            getAzureOpenAIEmbeddingSkill(
+                deploymentId=request.aoaiEmbeddingDeployment,
+                resourceUri=request.aoaiEmbeddingEndpoint,
+                modelName=request.aoaiEmbeddingDeployment,
+            ),
+            getAzureOpenAIEmbeddingSkillForVerbalizedImage(
+                deploymentId=request.aoaiEmbeddingDeployment,
+                resourceUri=request.aoaiEmbeddingEndpoint,
+                modelName=request.aoaiEmbeddingDeployment,
+            ),
+            getShaperSkill(request.knowledgeStoreContainer),
+        ]
+
+        if request.metadataSkillEndpoint and request.metadataSkillKey:
+            skills.append(
+                getDocumentMetadataSkill(
+                    endpoint=request.metadataSkillEndpoint,
+                    skill_key=request.metadataSkillKey,
+                )
+            )
+        else:
+            print(
+                "Metadata enrichment skill not configured; category/models fields will remain empty."
+            )
+
         skillSet = SearchIndexerSkillset(
             name=f"{request.indexName}-skillset",
-            skills=[
-                getDocumentIntelligenceLayOutSkill(),
-                getChatCompletionSkill(
-                    uri=request.chatCompletionEndpoint,
-                    deploymentName=request.chatCompletionDeployment
-                ),
-                getAzureOpenAIEmbeddingSkill(
-                    deploymentId=request.aoaiEmbeddingDeployment,
-                    resourceUri=request.aoaiEmbeddingEndpoint,
-                    modelName=request.aoaiEmbeddingDeployment,
-                ),
-                getAzureOpenAIEmbeddingSkillForVerbalizedImage(
-                    deploymentId=request.aoaiEmbeddingDeployment,
-                    resourceUri=request.aoaiEmbeddingEndpoint,
-                    modelName=request.aoaiEmbeddingDeployment,
-                ),
-                getShaperSkill(request.knowledgeStoreContainer),
-            ],
+            skills=skills,
             index_projection=SearchIndexerIndexProjection(
                 selectors=[
                     SearchIndexerIndexProjectionSelector(
@@ -99,6 +114,15 @@ class IndexerImgVerbalizationStrategy(Strategy):
                             ),
                             InputFieldMappingEntry(
                                 name="document_title", source="/document/document_title"
+                            ),
+                            InputFieldMappingEntry(
+                                name="category", source="/document/category"
+                            ),
+                            InputFieldMappingEntry(
+                                name="models", source="/document/models"
+                            ),
+                            InputFieldMappingEntry(
+                                name="modelKeys", source="/document/modelKeys"
                             ),
                         ],
                     ),
@@ -125,6 +149,15 @@ class IndexerImgVerbalizationStrategy(Strategy):
                             ),
                             InputFieldMappingEntry(
                                 name="document_title", source="/document/document_title"
+                            ),
+                            InputFieldMappingEntry(
+                                name="category", source="/document/category"
+                            ),
+                            InputFieldMappingEntry(
+                                name="models", source="/document/models"
+                            ),
+                            InputFieldMappingEntry(
+                                name="modelKeys", source="/document/modelKeys"
                             ),
                         ],
                     ),
@@ -244,6 +277,33 @@ class IndexerImgVerbalizationStrategy(Strategy):
                 sortable=False,
                 facetable=False,
             ),
+            SimpleField(
+                name="category",
+                type=SearchFieldDataType.String,
+                searchable=False,
+                filterable=True,
+                hidden=False,
+                sortable=False,
+                facetable=True,
+            ),
+            SearchField(
+                name="models",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                searchable=False,
+                filterable=True,
+                hidden=False,
+                sortable=False,
+                facetable=True,
+            ),
+            SearchField(
+                name="modelKeys",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                searchable=False,
+                filterable=True,
+                hidden=False,
+                sortable=False,
+                facetable=False,
+            ),
             ComplexField(
                 name="locationMetadata",
                 fields=[
@@ -355,7 +415,7 @@ class IndexerImgVerbalizationStrategy(Strategy):
                 ),
                 field_mappings=[
                     FieldMapping(
-                        source_field_name="metadata_storage_name",
+                        source_field_name="seke",
                         target_field_name="document_title",
                     ),
                 ],
