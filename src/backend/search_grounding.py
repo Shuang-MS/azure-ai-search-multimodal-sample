@@ -1,10 +1,11 @@
+import json
 import logging
 import re
 from typing import List
 from openai import AsyncOpenAI
 from data_model import DataModel
 from prompts import SEARCH_QUERY_SYSTEM_PROMPT
-from models import Message, SearchConfig, GroundingResults
+from models import Message, SearchConfig, GroundingResults, SearchQuery
 from azure.search.documents.aio import SearchClient
 from grounding_retriever import GroundingRetriever
 import time
@@ -33,10 +34,14 @@ class SearchGroundingRetriever(GroundingRetriever):
         options: SearchConfig,
     ) -> GroundingResults:
 
-        query = await self._generate_search_query(user_message, chat_thread)
+        query_details = await self._generate_search_query(user_message, chat_thread)
 
         try:
-            payload = self.data_model.create_search_payload(query, options)
+            payload = self.data_model.create_search_payload(
+                query_details["query"],
+                options,
+                query_details.get("model"),
+            )
 
             start = time.perf_counter()
             search_results = await self.search_client.search(
@@ -45,6 +50,7 @@ class SearchGroundingRetriever(GroundingRetriever):
                 vector_queries=payload["vector_queries"],
                 query_type=payload.get("query_type", "simple"),
                 select=payload["select"],
+                filter=payload.get("filter"),
             )
             logger.info(f"Azure AI Search request took {time.perf_counter() - start:.2f} seconds")
         except Exception as e:
@@ -57,13 +63,13 @@ class SearchGroundingRetriever(GroundingRetriever):
         references = await self.data_model.collect_grounding_results(results_list)
 
         return {
-            "search_queries": [query],
+            "search_queries": [query_details],
             "references": references,
         }
 
     async def _generate_search_query(
         self, user_message: str, chat_thread: List[Message]
-    ) -> str:
+    ) -> SearchQuery:
         try:
             recent_user_messages = self._extract_recent_user_messages(chat_thread)
 
@@ -88,11 +94,47 @@ class SearchGroundingRetriever(GroundingRetriever):
             )
 
             logger.info(f"Search query generation took {time.perf_counter() - start:.2f} seconds")
-            return response.choices[0].message.content
+            parsed_query = self._parse_query_response(response.choices[0].message.content, user_message)
+            return parsed_query
         except Exception as e:
             raise Exception(
                 f"Error while calling Azure OpenAI to generate a search query: {str(e)}"
             )
+
+    def _parse_query_response(self, raw_response: str, fallback_query: str) -> SearchQuery:
+        """Parse the LLM response into structured query/model fields."""
+        query_value = ""
+        model_value = ""
+
+        if raw_response:
+            cleaned_response = raw_response.strip()
+            if cleaned_response.startswith("```") and cleaned_response.endswith("```"):
+                # Handle fenced code block outputs by stripping the delimiters and optional language hints.
+                cleaned_response = "\n".join(
+                    line for line in cleaned_response.splitlines()[1:-1]
+                ).strip()
+
+            try:
+                response_json = json.loads(cleaned_response)
+                query_value = str(response_json.get("query", "")).strip()
+                model_value = str(response_json.get("model", "")).strip()
+            except json.JSONDecodeError:
+                logger.warning(
+                    "Failed to parse search query response as JSON: %s",
+                    cleaned_response,
+                )
+                query_value = cleaned_response
+
+        if not query_value:
+            logger.warning(
+                "Search query generation returned empty query; falling back to user input."
+            )
+            query_value = fallback_query
+
+        return {
+            "query": query_value,
+            "model": model_value or "",
+        }
 
     def _extract_recent_user_messages(
         self, chat_thread: List[Message], max_messages: int = 3

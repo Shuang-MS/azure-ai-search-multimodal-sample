@@ -149,3 +149,25 @@ def getShaperSkill(ks_container_name: str):
             OutputFieldMappingEntry(name="output", target_name="new_normalized_images")
         ],
     )
+
+def getBlobMetadataFanoutSkill(name: str, context_path: str):
+    # Shaper skill runs inside each child scope to copy parent metadata down
+    return ShaperSkill(
+        name=name,
+        context=context_path,
+        inputs=[
+            InputFieldMappingEntry(
+                name="category",
+                source="/document/category",
+                inputs=[],
+            ),
+            InputFieldMappingEntry(
+                name="models",
+                source="/document/models",
+                inputs=[],
+            ),
+        ],
+        outputs=[
+            OutputFieldMappingEntry(name="output", target_name="blob_metadata")
+        ],
+    )

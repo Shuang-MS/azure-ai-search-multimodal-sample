@@ -19,8 +19,8 @@ from data_injestion.indexer_img_verbalize_strategy import (
 from data_injestion.strategy import Strategy
 from constants import USER_AGENT
 from processfile import ProcessFile
-from azure.identity.aio import DefaultAzureCredential, AzureCliCredential
 import argparse
+from token_credentials import build_token_credential
 
 
 def _ensure_env_vars(vars_to_check: list[str]):
@@ -88,8 +88,7 @@ async def main(source: str, indexer_Strategy: Optional[str] = None):
     load_environment_variables(indexer_Strategy)
     documents_to_process_folder, documents_output_folder = setup_directories()
 
-    # tokenCredential = DefaultAzureCredential()
-    tokenCredential = AzureCliCredential()
+    tokenCredential = build_token_credential()
 
     document_client = DocumentIntelligenceClient(
         endpoint=os.environ["DOCUMENTINTELLIGENCE_ENDPOINT"],

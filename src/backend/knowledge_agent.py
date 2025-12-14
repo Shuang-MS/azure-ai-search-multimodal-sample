@@ -218,11 +218,18 @@ class KnowledgeAgentGrounding(GroundingRetriever):
     """Need to use document id as the reference id so I can lookkup the document properties for citations"""
 
     def _get_search_queries(self, response: KnowledgeAgentRetrievalResponse):
-        return [
-            activity.as_dict()["query"]
-            for activity in response.activity
-            if activity.type == "AzureSearchQuery"
-        ]
+        queries = []
+        for activity in response.activity:
+            if activity.type != "AzureSearchQuery":
+                continue
+            activity_payload = activity.as_dict()
+            queries.append(
+                {
+                    "query": activity_payload.get("query", ""),
+                    "model": "",
+                }
+            )
+        return queries
 
     def _get_document_id(
         self, ref_id: str, response: KnowledgeAgentRetrievalResponse

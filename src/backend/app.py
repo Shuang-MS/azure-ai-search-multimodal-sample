@@ -4,11 +4,7 @@ from pathlib import Path
 from aiohttp import web
 from rich.logging import RichHandler
 from openai import AsyncOpenAI
-from azure.identity.aio import (
-    DefaultAzureCredential,
-    AzureCliCredential,
-    get_bearer_token_provider,
-)
+from azure.identity.aio import get_bearer_token_provider
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.indexes.aio import SearchIndexClient
 from azure.search.documents.agent.aio import KnowledgeAgentRetrievalClient
@@ -22,6 +18,7 @@ from constants import USER_AGENT
 from multimodalrag import MultimodalRag
 from data_model import DocumentPerChunkDataModel
 from speech import SpeechTokenService
+from token_credentials import build_token_credential
 
 
 logging.basicConfig(
@@ -40,8 +37,7 @@ async def list_indexes(index_client: SearchIndexClient):
 
 
 async def create_app():
-    # tokenCredential = DefaultAzureCredential()
-    tokenCredential = AzureCliCredential()
+    tokenCredential = build_token_credential()
     tokenProvider = get_bearer_token_provider(
         tokenCredential,
         "https://cognitiveservices.azure.com/.default",

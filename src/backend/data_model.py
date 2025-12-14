@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional
 from models import (
     SearchRequestParameters,
     SearchConfig,
@@ -15,7 +15,7 @@ class DataModel(ABC):
 
     @abstractmethod
     def create_search_payload(
-        self, query: str, search_config: SearchConfig
+        self, query: str, search_config: SearchConfig, model: Optional[str] = None
     ) -> SearchRequestParameters:
         """Creates the search request payload."""
         pass
@@ -36,7 +36,7 @@ class DataModel(ABC):
 
 class DocumentPerChunkDataModel(DataModel):
     def create_search_payload(
-        self, query: str, search_config: SearchConfig
+        self, query: str, search_config: SearchConfig, model: Optional[str] = None
     ) -> SearchRequestParameters:
         """Creates the search request payload with vector/semantic/hybrid configurations using a configured vectorizer."""
 
@@ -51,13 +51,30 @@ class DocumentPerChunkDataModel(DataModel):
                     "k": search_config["chunk_count"],
                 }
             ],
-            "select": "content_id, content_text, document_title, text_document_id, image_document_id, locationMetadata, content_path, category, models",
+            # Only request fields guaranteed to exist in the index to avoid $select errors.
+            "select": "content_id, content_text, document_title, text_document_id, image_document_id, locationMetadata, content_path",
         }
+
+        model_filter = self._build_model_filter(model)
+        if model_filter:
+            payload["filter"] = model_filter
 
         if search_config["use_semantic_ranker"]:
             payload["query_type"] = "semantic"
 
         return payload
+
+    @staticmethod
+    def _build_model_filter(model: Optional[str]) -> Optional[str]:
+        if not model:
+            return None
+
+        sanitized = model.strip()
+        if not sanitized:
+            return None
+
+        sanitized = sanitized.replace("'", "''")
+        return f"search.ismatch('{sanitized}', 'document_title', 'full', 'any')"
 
     def extract_citation(self, document):
         return {

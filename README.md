@@ -129,6 +129,10 @@ NOTE: It may take 5-10 minutes after you see 'SUCCESS' for the application to be
    src/start.sh
    ```
 
+### Authentication
+- The backend and prepdocs tooling use `DefaultAzureCredential` by default, which enables Managed Identity inside App Service with no extra configuration.
+- For local debugging scenarios where you would rather use `az login`, set `USE_AZ_CLI_CREDENTIAL=true` in your shell (or `.env`) before running the app or scripts to force the use of `AzureCliCredential`.
+
 ### Bring your own data (supports .pdf only)
 - To index your own data,
    - Place pdf's under ```/data``` folder
@@ -192,4 +196,3 @@ The following table maps the roles used by the application to their respective f
 - Deployment fails for 'Cohere' in marketplace subscription !['Error from azd up'](docs/images/marketplace_error.png)
   - Ensure your subscription is supported or enabled for Marketplace deployment [Learn more](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/deploy-models-serverless?tabs=azure-ai-studio#prerequisites)
   - There is a known issue of conflict operation between Marketplace subscription and endpoint deployment. **Rerun deployment** to fix it
-

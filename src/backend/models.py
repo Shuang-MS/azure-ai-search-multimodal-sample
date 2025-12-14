@@ -20,6 +20,14 @@ class SearchRequestParameters(TypedDict):
     vector_queries: Optional[List[Dict[str, str]]] = None
     semantic_configuration_name: Optional[str] = None
     search_fields: Optional[List[str]] = None
+    filter: Optional[str] = None
+
+
+class SearchQuery(TypedDict):
+    """Structured representation of the generated search query and optional model filter."""
+
+    query: str
+    model: str
 
 
 class GroundingResult(TypedDict):
@@ -34,7 +42,7 @@ class GroundingResults(TypedDict):
     """Structure for grrounding results with references and queries."""
 
     references: List[GroundingResult]
-    search_queries: List[str]
+    search_queries: List[SearchQuery]
 
 
 class AnswerFormat(BaseModel):

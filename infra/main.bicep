@@ -131,6 +131,9 @@ var appsettings = {
   ARTIFACTS_STORAGE_ACCOUNT_URL: storageAccount.outputs.accountPrimaryEndpoints.blob
   ARTIFACTS_STORAGE_CONTAINER: mmArtifacts
   SAMPLES_STORAGE_CONTAINER: mmSampleDocs
+  AZURE_SPEECH_KEY: aiFoundry.outputs.aiservicesKey
+  AZURE_SPEECH_REGION: location
+  AZURE_SPEECH_VOICE: 'en-US-AvaMultilingualNeural'
   KNOWLEDGE_AGENT_NAME: knowledgeAgentName
   INDEXER_STRATEGY: indexerStrategy
 }

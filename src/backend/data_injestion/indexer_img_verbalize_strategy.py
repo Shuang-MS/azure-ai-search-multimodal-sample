@@ -9,6 +9,7 @@ from azure.search.documents.indexes.models import (
     AzureOpenAIVectorizer,
     AzureOpenAIVectorizerParameters,
     ComplexField,
+    CustomAnalyzer,
     FieldMapping,
     HnswAlgorithmConfiguration,
     HnswParameters,
@@ -18,6 +19,7 @@ from azure.search.documents.indexes.models import (
     IndexProjectionMode,
     InputFieldMappingEntry,
     NativeBlobSoftDeleteDeletionDetectionPolicy,
+    PatternTokenizer,
     SearchableField,
     SearchField,
     SearchFieldDataType,
@@ -38,17 +40,19 @@ from azure.search.documents.indexes.models import (
     SemanticPrioritizedFields,
     SemanticSearch,
     SimpleField,
+    TokenFilterName,
     VectorSearch,
     VectorSearchProfile,
 )
 from data_injestion.models import ProcessRequest
+from helpers import build_blob_metadata_from_filename
 from data_injestion.skills import (
     getAzureOpenAIEmbeddingSkill,
     getAzureOpenAIEmbeddingSkillForVerbalizedImage,
     getChatCompletionSkill,
     getDocumentIntelligenceLayOutSkill,
-    getDocumentMetadataSkill,
     getShaperSkill,
+    getBlobMetadataFanoutSkill,
 )
 from data_injestion.strategy import Strategy
 
@@ -61,6 +65,14 @@ class IndexerImgVerbalizationStrategy(Strategy):
     def _buildSkills(self, request: ProcessRequest):
         skills = [
             getDocumentIntelligenceLayOutSkill(),
+            getBlobMetadataFanoutSkill(
+                name="text-sections-blob-metadata",
+                context_path="/document/text_sections/*",
+            ),
+            getBlobMetadataFanoutSkill(
+                name="image-blob-metadata",
+                context_path="/document/normalized_images/*",
+            ),
             getChatCompletionSkill(
                 uri=request.chatCompletionEndpoint,
                 deploymentName=request.chatCompletionDeployment
@@ -77,18 +89,6 @@ class IndexerImgVerbalizationStrategy(Strategy):
             ),
             getShaperSkill(request.knowledgeStoreContainer),
         ]
-
-        if request.metadataSkillEndpoint and request.metadataSkillKey:
-            skills.append(
-                getDocumentMetadataSkill(
-                    endpoint=request.metadataSkillEndpoint,
-                    skill_key=request.metadataSkillKey,
-                )
-            )
-        else:
-            print(
-                "Metadata enrichment skill not configured; category/models fields will remain empty."
-            )
 
         skillSet = SearchIndexerSkillset(
             name=f"{request.indexName}-skillset",
@@ -116,14 +116,13 @@ class IndexerImgVerbalizationStrategy(Strategy):
                                 name="document_title", source="/document/document_title"
                             ),
                             InputFieldMappingEntry(
-                                name="category", source="/document/category"
+                                name="category",
+                                source="/document/text_sections/*/blob_metadata/category"
                             ),
                             InputFieldMappingEntry(
-                                name="models", source="/document/models"
-                            ),
-                            InputFieldMappingEntry(
-                                name="modelKeys", source="/document/modelKeys"
-                            ),
+                                name="models",
+                                source="/document/text_sections/*/blob_metadata/models"
+                            )
                         ],
                     ),
                     SearchIndexerIndexProjectionSelector(
@@ -149,16 +148,7 @@ class IndexerImgVerbalizationStrategy(Strategy):
                             ),
                             InputFieldMappingEntry(
                                 name="document_title", source="/document/document_title"
-                            ),
-                            InputFieldMappingEntry(
-                                name="category", source="/document/category"
-                            ),
-                            InputFieldMappingEntry(
-                                name="models", source="/document/models"
-                            ),
-                            InputFieldMappingEntry(
-                                name="modelKeys", source="/document/modelKeys"
-                            ),
+                            )
                         ],
                     ),
                 ],
@@ -201,8 +191,10 @@ class IndexerImgVerbalizationStrategy(Strategy):
             async with aiofiles.open(doc_path, "rb") as f:
                 file_bytes = await f.read()
                 file_name = os.path.basename(doc_path)
+                blob_metadata = build_blob_metadata_from_filename(file_name)
+                upload_kwargs = {"metadata": blob_metadata} if blob_metadata else {}
                 await container_client.upload_blob(
-                    file_name, file_bytes, overwrite=True
+                    file_name, file_bytes, overwrite=True, **upload_kwargs
                 )
 
         ds_container = SearchIndexerDataContainer(name=request.blobSource)
@@ -217,6 +209,15 @@ class IndexerImgVerbalizationStrategy(Strategy):
         return data_source_connection
 
     def _buildIndex(self, request: ProcessRequest):
+        document_title_tokenizer = PatternTokenizer(
+            name="documentTitleTokenizer",
+            pattern=r"(?:\s+|_)",
+        )
+        document_title_analyzer = CustomAnalyzer(
+            name="documentTitleAnalyzer",
+            tokenizer_name=document_title_tokenizer.name,
+            token_filters=[TokenFilterName.LOWERCASE]
+        )
         fields = [
             SearchableField(
                 name="content_id",
@@ -250,6 +251,7 @@ class IndexerImgVerbalizationStrategy(Strategy):
                 hidden=False,
                 sortable=True,
                 facetable=True,
+                analyzer_name=document_title_analyzer.name,
             ),
             SearchableField(
                 name="content_text",
@@ -288,7 +290,7 @@ class IndexerImgVerbalizationStrategy(Strategy):
             ),
             SearchField(
                 name="models",
-                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                type=SearchFieldDataType.String,
                 searchable=False,
                 filterable=True,
                 hidden=False,
@@ -331,6 +333,8 @@ class IndexerImgVerbalizationStrategy(Strategy):
         index = SearchIndex(
             fields=fields,
             name=request.indexName,
+            analyzers=[document_title_analyzer],
+            tokenizers=[document_title_tokenizer],
             vector_search=VectorSearch(
                 algorithms=[
                     HnswAlgorithmConfiguration(
@@ -415,9 +419,9 @@ class IndexerImgVerbalizationStrategy(Strategy):
                 ),
                 field_mappings=[
                     FieldMapping(
-                        source_field_name="seke",
+                        source_field_name="metadata_storage_name",
                         target_field_name="document_title",
-                    ),
+                    )
                 ],
             )
         )
