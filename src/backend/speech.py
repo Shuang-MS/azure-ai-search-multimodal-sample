@@ -28,6 +28,13 @@ class SpeechTokenService:
             raise ValueError("Speech region is not configured.")
         return f"https://{self._speech_region}.api.cognitive.microsoft.com/sts/v1.0/issueToken"
 
+    async def handle_status_request(self, _: web.Request) -> web.Response:
+        """Expose whether speech is configured so the frontend can toggle audio features."""
+        payload = {"enabled": self._has_credentials()}
+        if self._default_voice:
+            payload["voice"] = self._default_voice
+        return web.json_response(payload)
+
     async def _fetch_token(self) -> str:
         if not self._has_credentials():
             raise ValueError("Azure Speech credentials are not configured.")

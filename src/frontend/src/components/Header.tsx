@@ -21,7 +21,7 @@ export const Header = ({ toggleMode, darkMode, muteMode, onToggleMute, supportsS
                         appearance={muteMode ? "primary" : "secondary"}
                         disabled={!supportsSpeech}
                         onClick={onToggleMute}
-                        title={supportsSpeech ? undefined : "Speech is unavailable in this browser."}
+                        title={supportsSpeech ? undefined : "Speech is unavailable for this deployment."}
                     >
                         {muteMode ? "Unmute" : "Mute"}
                     </Button>

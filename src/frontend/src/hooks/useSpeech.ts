@@ -16,6 +16,11 @@ interface TokenResponse {
     voice?: string;
 }
 
+interface SpeechStatusResponse {
+    enabled: boolean;
+    voice?: string;
+}
+
 export interface SpeechControls {
     supportsSpeech: boolean;
     listening: boolean;
@@ -51,15 +56,20 @@ const concatAudioChunks = (chunks: Uint8Array[]) => {
 };
 
 export default function useSpeech(): SpeechControls {
-    const supportsSpeech =
+    const browserSupportsSpeech =
         typeof window !== "undefined" &&
         typeof navigator !== "undefined" &&
         Boolean(navigator.mediaDevices);
 
+    const [speechConfigured, setSpeechConfigured] = useState(browserSupportsSpeech);
     const [listening, setListening] = useState(false);
     const [speaking, setSpeaking] = useState(false);
     const [transcript, setTranscript] = useState("");
     const [error, setError] = useState<string>();
+    const supportsSpeech = browserSupportsSpeech && speechConfigured;
+    const speechUnavailableMessage = browserSupportsSpeech
+        ? "Speech is disabled for this deployment."
+        : "Speech is not supported in this browser.";
 
     const speechConfigRef = useRef<SpeechConfig>();
     const recognizerRef = useRef<SpeechRecognizer>();
@@ -74,17 +84,83 @@ export default function useSpeech(): SpeechControls {
     const audioSourceRef = useRef<AudioBufferSourceNode>();
     const chunkCollectorRef = useRef<Uint8Array[] | undefined>();
 
+    useEffect(() => {
+        let disposed = false;
+
+        const checkSpeechAvailability = async () => {
+            if (!browserSupportsSpeech) {
+                setSpeechConfigured(false);
+                return;
+            }
+
+            try {
+                const response = await fetch("/speech/status");
+                if (!response.ok) {
+                    throw new Error("Failed to verify speech availability.");
+                }
+                const status: SpeechStatusResponse = await response.json();
+                if (disposed) {
+                    return;
+                }
+
+                setSpeechConfigured(Boolean(status?.enabled));
+                if (!status?.enabled) {
+                    setError("Speech is disabled for this deployment.");
+                } else {
+                    setError(undefined);
+                }
+            } catch (err) {
+                if (disposed) {
+                    return;
+                }
+                setSpeechConfigured(false);
+                setError("Speech is disabled for this deployment.");
+            }
+        };
+
+        void checkSpeechAvailability();
+
+        return () => {
+            disposed = true;
+        };
+    }, [browserSupportsSpeech]);
+
     const fetchToken = useCallback(async (): Promise<TokenResponse> => {
-        const response = await fetch("/speech/token");
-        if (!response.ok) {
-            throw new Error("Unable to reach Azure Speech token endpoint.");
+        if (!speechConfigured) {
+            throw new Error(speechUnavailableMessage);
         }
-        return response.json();
-    }, []);
+
+        const response = await fetch("/speech/token");
+        let payload: any;
+
+        try {
+            payload = await response.json();
+        } catch {
+            payload = undefined;
+        }
+
+        if (!response.ok) {
+            const errorMessage =
+                payload &&
+                typeof payload === "object" &&
+                "error" in payload &&
+                typeof (payload as { error?: unknown }).error === "string"
+                    ? String((payload as { error?: string }).error)
+                    : "Unable to reach Azure Speech token endpoint.";
+
+            if (response.status === 400) {
+                setSpeechConfigured(false);
+            }
+
+            throw new Error(errorMessage);
+        }
+
+        return payload as TokenResponse;
+    }, [speechConfigured, speechUnavailableMessage]);
 
     const ensureSpeechConfig = useCallback(async () => {
         if (!supportsSpeech) {
-            throw new Error("Speech is not supported in this browser.");
+            throw new Error(speechUnavailableMessage);
         }
 
         const now = Date.now();
@@ -105,7 +181,7 @@ export default function useSpeech(): SpeechControls {
         }
         speechConfigRef.current = config;
         return config;
-    }, [fetchToken, supportsSpeech]);
+    }, [fetchToken, speechUnavailableMessage, supportsSpeech]);
 
     const cleanupRecognizer = useCallback(
         () =>
@@ -146,7 +222,7 @@ export default function useSpeech(): SpeechControls {
     const startListening = useCallback(
         async (onFinalResult?: FinalResultHandler) => {
             if (!supportsSpeech) {
-                setError("Speech recognition is not supported in this browser.");
+                setError(speechUnavailableMessage);
                 return;
             }
 
@@ -213,7 +289,7 @@ export default function useSpeech(): SpeechControls {
                 setError(err instanceof Error ? err.message : "Unable to start speech recognition.");
             }
         },
-        [cleanupRecognizer, ensureSpeechConfig, listening, supportsSpeech]
+        [cleanupRecognizer, ensureSpeechConfig, listening, speechUnavailableMessage, supportsSpeech]
     );
 
     const stopAudioPlayback = useCallback(() => {
@@ -354,6 +430,9 @@ export default function useSpeech(): SpeechControls {
     const synthesizeText = useCallback(
         async (text: string, interrupt: boolean) => {
             if (!supportsSpeech || !text?.trim()) {
+                if (!supportsSpeech) {
+                    setError(speechUnavailableMessage);
+                }
                 return;
             }
 
@@ -429,7 +508,15 @@ export default function useSpeech(): SpeechControls {
                 setError(err instanceof Error ? err.message : "Unable to synthesize speech.");
             }
         },
-        [ensureSynthesizer, playAudioBytes, resetSynthesizer, stopAudioPlayback, stopSpeaking, supportsSpeech]
+        [
+            ensureSynthesizer,
+            playAudioBytes,
+            resetSynthesizer,
+            speechUnavailableMessage,
+            stopAudioPlayback,
+            stopSpeaking,
+            supportsSpeech
+        ]
     );
 
     const processSpeechQueue = useCallback(async () => {

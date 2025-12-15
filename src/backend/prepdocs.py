@@ -88,8 +88,8 @@ async def main(source: str, indexer_Strategy: Optional[str] = None):
     load_environment_variables(indexer_Strategy)
     documents_to_process_folder, documents_output_folder = setup_directories()
 
-    # tokenCredential = DefaultAzureCredential()
-    tokenCredential = AzureCliCredential()
+    tokenCredential = DefaultAzureCredential()
+    # tokenCredential = AzureCliCredential()
 
     document_client = DocumentIntelligenceClient(
         endpoint=os.environ["DOCUMENTINTELLIGENCE_ENDPOINT"],

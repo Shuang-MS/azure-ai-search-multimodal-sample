@@ -40,8 +40,8 @@ async def list_indexes(index_client: SearchIndexClient):
 
 
 async def create_app():
-    # tokenCredential = DefaultAzureCredential()
-    tokenCredential = AzureCliCredential()
+    tokenCredential = DefaultAzureCredential()
+    # tokenCredential = AzureCliCredential()
     tokenProvider = get_bearer_token_provider(
         tokenCredential,
         "https://cognitiveservices.azure.com/.default",
@@ -135,6 +135,7 @@ async def create_app():
                 "/", lambda _: web.FileResponse(current_directory / "static/index.html")
             ),
             web.get("/list_indexes", lambda _: list_indexes(index_client)),
+            web.get("/speech/status", speech_token_service.handle_status_request),
             web.get("/speech/token", speech_token_service.handle_token_request),
         ]
     )

@@ -59,7 +59,10 @@ param indexerStrategy string
 var resourcePrefix = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environment, location))
 var deploymentNamePrefix = take(resourceToken, 6)
-var tags = { 'azd-env-name': environment }
+var tags = { 
+  'azd-env-name': environment
+  'SecurityControl': 'ignore'
+}
 var rgName = environment
 
 var searchIndexName = 'state-of-ai'
@@ -133,6 +136,9 @@ var appsettings = {
   SAMPLES_STORAGE_CONTAINER: mmSampleDocs
   KNOWLEDGE_AGENT_NAME: knowledgeAgentName
   INDEXER_STRATEGY: indexerStrategy
+  AZURE_SPEECH_KEY: aiFoundry.outputs.aiservicesKey
+  AZURE_SPEECH_REGION: location
+  AZURE_SPEECH_VOICE: 'en-US-AvaMultilingualNeural'
 }
 
 module appservice 'host/appservices.bicep' = {
